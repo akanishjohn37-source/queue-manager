@@ -1,6 +1,6 @@
 // frontend/src/api.js
-const API_BASE = "http://127.0.0.1:8000/api";
-
+//const API_BASE = "http://127.0.0.1:8000/api";
+const API_BASE = "https://queue-manager-qnu1.onrender.com/api";
 async function request(path, opts = {}) {
   const headers = new Headers(opts.headers || {});
   if (!headers.has("Content-Type") && !(opts.body instanceof FormData)) {
