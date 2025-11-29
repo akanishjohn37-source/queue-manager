@@ -21,18 +21,8 @@ export default function ProviderDashboard() {
         }).catch(console.error);
     }, [userId]);
 
-    useEffect(() => {
-        if (myProviders.length === 0) return;
-        const loadServices = async () => {
-            let allServices = [];
-            for (const p of myProviders) {
-                const s = await fetchServices(p.id);
-                allServices = [...allServices, ...s];
-            }
-            setServices(allServices);
-        };
-        loadServices();
-    }, [myProviders]);
+    // useEffect for loading services removed to prevent auto-loading all services.
+    // Services are now only loaded when a specific hospital is selected.
 
     useEffect(() => {
         if (!selectedService) return;
