@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import { registerUser } from "../api";
 import { useNavigate, Link } from "react-router-dom";
-import { UserPlus, User, Lock, Mail } from "lucide-react";
+import { UserPlus, User, Lock } from "lucide-react";
 
 export default function Register() {
   const [username, setUsername] = useState("");
@@ -28,7 +28,10 @@ export default function Register() {
     try {
       await registerUser(username, password, password2);
       setMsg("Registered successfully");
-      nav("/user");
+      setUsername("");
+      setPassword("");
+      setPassword2("");
+      setTimeout(() => nav("/login"), 2000);
     } catch (err) {
       console.error("Register error:", err);
       let m = err.message || "Registration failed";
@@ -131,4 +134,3 @@ export default function Register() {
     </div>
   );
 }
-

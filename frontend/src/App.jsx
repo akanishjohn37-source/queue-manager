@@ -1,17 +1,19 @@
 import React, { useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
-import { Menu, X, User, Shield, Activity, LogOut, LogIn, PlusSquare } from "lucide-react";
+import { Menu, X, ChevronDown, Facebook, Linkedin, Youtube } from "lucide-react";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import UserDashboard from "./pages/UserDashboard";
 import AdminDashboard from "./pages/AdminDashboard";
 import NotificationPage from "./pages/NotificationPage";
 import ProviderDashboard from "./pages/ProviderDashboard";
+import LandingPage from "./pages/LandingPage";
+import { Button } from "./components/QtracComponents";
 
 // --- Components ---
 
 function NavBar() {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
   const isLoggedIn = !!localStorage.getItem("token");
   const username = localStorage.getItem("username");
@@ -23,103 +25,139 @@ function NavBar() {
     }
   };
 
-  const NavLink = ({ to, icon: Icon, children }) => {
+  const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
+
+  const NavLink = ({ to, children, onClick }) => {
     const isActive = location.pathname === to;
     return (
       <Link
         to={to}
-        className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${isActive
-          ? "bg-blue-700 text-white"
-          : "text-blue-100 hover:bg-blue-600 hover:text-white"
-          }`}
-        onClick={() => setIsOpen(false)}
+        onClick={onClick}
+        className={`font-bold text-sm tracking-wider cursor-pointer transition-colors ${isActive ? 'text-yellow-500' : 'text-gray-800 hover:text-yellow-500'}`}
       >
-        {Icon && <Icon size={18} />}
-        <span>{children}</span>
+        {children}
       </Link>
     );
   };
 
   return (
-    <nav className="bg-blue-600 shadow-lg sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <div className="flex items-center">
-            <Link to="/" className="flex items-center space-x-2 text-white font-bold text-xl">
-              <Activity className="h-8 w-8 text-blue-200" />
-              <span>QueueManager</span>
+    <>
+      <header className="fixed top-0 left-0 right-0 bg-white z-50 shadow-sm">
+        <div className="flex items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-1">
+            <Link to="/" className="flex items-center gap-1 no-underline">
+              <span className="text-3xl font-extrabold text-yellow-400 tracking-tighter">Q</span>
+              <span className="text-2xl font-bold text-gray-800">ueueManager</span>
+              <div className="w-2 h-2 bg-yellow-400 rounded-full mt-2 ml-0.5"></div>
             </Link>
           </div>
+          <button onClick={toggleMenu} className="p-1 focus:outline-none md:hidden">
+            {isMenuOpen ? <X size={28} /> : <Menu size={28} />}
+          </button>
 
-          {/* Desktop Menu */}
-          <div className="hidden md:block">
-            <div className="ml-10 flex items-baseline space-x-4">
-              {isLoggedIn ? (
-                <>
-                  <NavLink to="/user" icon={User}>Book Token</NavLink>
-                  <NavLink to="/notifications" icon={Activity}>Live Status</NavLink>
-                  <NavLink to="/provider" icon={PlusSquare}>Provider</NavLink>
-                  <NavLink to="/admin" icon={Shield}>Admin</NavLink>
-                  <button
-                    onClick={handleLogout}
-                    className="flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium text-red-100 hover:bg-red-600 hover:text-white transition-colors"
-                  >
-                    <LogOut size={18} />
-                    <span>Logout ({username})</span>
-                  </button>
-                </>
-              ) : (
-                <NavLink to="/login" icon={LogIn}>Login</NavLink>
+          {/* Desktop Nav */}
+          <div className="hidden md:flex items-center gap-6">
+            {isLoggedIn ? (
+              <>
+                <NavLink to="/user">BOOK TOKEN</NavLink>
+                <NavLink to="/notifications">LIVE STATUS</NavLink>
+                {localStorage.getItem("is_staff") === "true" && (
+                  <NavLink to="/provider">PROVIDER</NavLink>
+                )}
+                {localStorage.getItem("is_staff") === "true" && (
+                  <NavLink to="/admin">ADMIN</NavLink>
+                )}
+                <button
+                  onClick={handleLogout}
+                  className="font-bold text-sm tracking-wider cursor-pointer text-gray-600 hover:text-red-500 transition-colors"
+                >
+                  LOGOUT ({username})
+                </button>
+              </>
+            ) : (
+              <>
+                <NavLink to="/login">LOGIN</NavLink>
+                <Link to="/register">
+                  <Button variant="secondary" className="py-2 px-4 text-sm">REGISTER</Button>
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Mobile Navigation Overlay */}
+      <div className={`fixed inset-0 bg-white z-40 transform transition-transform duration-300 ease-in-out pt-24 px-6 overflow-y-auto ${isMenuOpen ? 'translate-x-0' : 'translate-x-full'} md:hidden`}>
+        <div className="flex flex-col gap-6">
+          {isLoggedIn ? (
+            <>
+              <NavLink to="/user" onClick={() => setIsMenuOpen(false)}>BOOK TOKEN</NavLink>
+              <NavLink to="/notifications" onClick={() => setIsMenuOpen(false)}>LIVE STATUS</NavLink>
+              <NavLink to="/provider" onClick={() => setIsMenuOpen(false)}>PROVIDER</NavLink>
+              {localStorage.getItem("is_staff") === "true" && (
+                <NavLink to="/admin" onClick={() => setIsMenuOpen(false)}>ADMIN</NavLink>
               )}
-            </div>
-          </div>
-
-          {/* Mobile menu button */}
-          <div className="-mr-2 flex md:hidden">
-            <button
-              onClick={() => setIsOpen(!isOpen)}
-              className="bg-blue-700 inline-flex items-center justify-center p-2 rounded-md text-blue-200 hover:text-white hover:bg-blue-600 focus:outline-none"
-            >
-              {isOpen ? <X size={24} /> : <Menu size={24} />}
-            </button>
-          </div>
+              <button
+                onClick={() => { handleLogout(); setIsMenuOpen(false); }}
+                className="text-left font-bold text-sm tracking-wider cursor-pointer text-gray-600 hover:text-red-500 transition-colors"
+              >
+                LOGOUT ({username})
+              </button>
+            </>
+          ) : (
+            <>
+              <NavLink to="/login" onClick={() => setIsMenuOpen(false)}>LOGIN</NavLink>
+              <Link to="/register" onClick={() => setIsMenuOpen(false)}>
+                <Button variant="secondary" className="w-full">REGISTER</Button>
+              </Link>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Mobile Menu */}
-      {isOpen && (
-        <div className="md:hidden bg-blue-700 pb-3 px-2 pt-2 space-y-1 sm:px-3 shadow-inner">
-          {isLoggedIn ? (
-            <>
-              <NavLink to="/user" icon={User}>Book Token</NavLink>
-              <NavLink to="/notifications" icon={Activity}>Live Status</NavLink>
-              <NavLink to="/provider" icon={PlusSquare}>Provider</NavLink>
-              <NavLink to="/admin" icon={Shield}>Admin</NavLink>
-              <div className="border-t border-blue-500 my-2 pt-2">
-                <button
-                  onClick={handleLogout}
-                  className="flex w-full items-center space-x-2 px-3 py-2 rounded-md text-base font-medium text-red-100 hover:bg-red-600 hover:text-white"
-                >
-                  <LogOut size={18} />
-                  <span>Logout ({username})</span>
-                </button>
-              </div>
-            </>
-          ) : (
-            <NavLink to="/login" icon={LogIn}>Login</NavLink>
-          )}
-        </div>
-      )}
-    </nav>
+      {/* Spacer for fixed header */}
+      <div className="h-20"></div>
+    </>
   );
 }
 
 function Footer() {
   return (
-    <footer className="bg-slate-900 text-slate-400 py-6 mt-auto">
-      <div className="max-w-7xl mx-auto px-4 text-center">
-        <p>&copy; {new Date().getFullYear()} Queue Manager System. All rights reserved.</p>
+    <footer className="bg-gray-900 text-gray-400 py-16 px-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12 max-w-7xl mx-auto text-center md:text-left">
+        <div>
+          <h4 className="text-white font-bold mb-4">HOSPITAL QUEUE SYSTEM</h4>
+          <p className="text-sm leading-relaxed">
+            Efficiently manage patient flow, reduce waiting times, and improve the overall healthcare experience with our advanced token system.
+          </p>
+        </div>
+        <div>
+          <h4 className="text-white font-bold mb-4">QUICK LINKS</h4>
+          <ul className="space-y-2 text-sm">
+            <li><Link to="/login" className="hover:text-yellow-400">Login</Link></li>
+            <li><Link to="/register" className="hover:text-yellow-400">Register</Link></li>
+            <li><Link to="/notifications" className="hover:text-yellow-400">Live Status</Link></li>
+          </ul>
+        </div>
+        <div>
+          <h4 className="text-white font-bold mb-4">CONTACT</h4>
+          <ul className="space-y-2 text-sm">
+            <li>support@queuemanager.com</li>
+            <li>+1 (555) 123-4567</li>
+          </ul>
+        </div>
+      </div>
+
+      <div className="flex flex-col md:flex-row justify-between items-center gap-8 max-w-7xl mx-auto border-t border-gray-800 pt-8">
+        <div className="flex gap-4">
+          <Facebook className="text-yellow-400 hover:text-yellow-300 cursor-pointer" />
+          <Linkedin className="text-yellow-400 hover:text-yellow-300 cursor-pointer" />
+          <Youtube className="text-yellow-400 hover:text-yellow-300 cursor-pointer" />
+        </div>
+
+        <div className="text-xs space-y-2 text-center md:text-right">
+          <p>© {new Date().getFullYear()} Queue Manager System. All rights reserved.</p>
+        </div>
       </div>
     </footer>
   );
@@ -127,9 +165,9 @@ function Footer() {
 
 function Layout({ children }) {
   return (
-    <div className="flex flex-col min-h-screen bg-gray-50">
+    <div className="flex flex-col min-h-screen bg-white font-sans">
       <NavBar />
-      <main className="flex-grow container mx-auto px-4 py-8 sm:px-6 lg:px-8">
+      <main className="flex-grow">
         {children}
       </main>
       <Footer />
@@ -152,7 +190,7 @@ export default function App() {
     <BrowserRouter>
       <Layout>
         <Routes>
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/user" element={
@@ -174,7 +212,9 @@ export default function App() {
           } />
           <Route path="/provider" element={
             <PrivateRoute>
-              <ProviderDashboard />
+              <AdminRoute>
+                <ProviderDashboard />
+              </AdminRoute>
             </PrivateRoute>
           } />
         </Routes>

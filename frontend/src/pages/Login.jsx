@@ -48,6 +48,8 @@ export default function Login() {
       setMsg("Login successful");
       // Redirect based on role or default
       const isStaff = localStorage.getItem("is_staff") === "true";
+      setUsername("");
+      setPassword("");
       if (isStaff) nav("/admin");
       else nav("/user");
     } catch (err) {

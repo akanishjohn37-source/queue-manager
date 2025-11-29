@@ -21,7 +21,7 @@ async function request(path, opts = {}) {
       localStorage.removeItem("username");
       localStorage.removeItem("user_id");
       // Optional: Redirect to login or just let the UI update
-      // window.location.href = "/login"; 
+      window.location.href = "/login";
     }
     const err = new Error(`HTTP ${res.status} ${res.statusText}: ${text}`);
     err.status = res.status;

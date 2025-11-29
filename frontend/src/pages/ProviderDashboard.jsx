@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { fetchProviders, fetchServices, fetchTokensByService, updateTokenStatus } from "../api";
 import { Users, Clock, CheckCircle, XCircle, Play, SkipForward, AlertCircle } from "lucide-react";
+import HospitalDirectory from "../components/HospitalDirectory";
 
 export default function ProviderDashboard() {
     const [myProviders, setMyProviders] = useState([]);
@@ -14,8 +15,8 @@ export default function ProviderDashboard() {
     useEffect(() => {
         if (!userId) return;
         fetchProviders().then((allProviders) => {
-            const mine = allProviders.filter(p => p.admin === userId);
-            setMyProviders(mine);
+            // Show all providers so staff can manage any hospital they are assigned to
+            setMyProviders(allProviders);
             setLoading(false);
         }).catch(console.error);
     }, [userId]);
@@ -109,90 +110,64 @@ export default function ProviderDashboard() {
             </div>
 
             {viewMode === "directory" ? (
-                <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                    <div className="p-6 border-b border-gray-100">
-                        <h2 className="text-xl font-semibold text-gray-800 flex items-center">
-                            <Users size={20} className="mr-2 text-blue-600" />
-                            Hospital Directory
-                        </h2>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                            <thead className="bg-gray-50">
-                                <tr className="text-gray-500 text-xs uppercase tracking-wider">
-                                    <th className="py-3 px-6 font-medium">Hospital Name</th>
-                                    <th className="py-3 px-6 font-medium">Location</th>
-                                    <th className="py-3 px-6 font-medium">Working Hours</th>
-                                    <th className="py-3 px-6 font-medium">Services Provided</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {allProviders.map(provider => {
-                                    const providerServices = allServices.filter(s => s.provider === provider.id);
-                                    return (
-                                        <tr key={provider.id} className="hover:bg-gray-50 transition-colors">
-                                            <td className="py-4 px-6 font-medium text-gray-900">{provider.name}</td>
-                                            <td className="py-4 px-6 text-gray-600">{provider.location || "N/A"}</td>
-                                            <td className="py-4 px-6 text-gray-600">
-                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                    {provider.working_hours || "09:00 AM - 05:00 PM"}
-                                                </span>
-                                            </td>
-                                            <td className="py-4 px-6 text-gray-600">
-                                                <div className="flex flex-wrap gap-1">
-                                                    {providerServices.length > 0 ? (
-                                                        providerServices.map(s => (
-                                                            <span key={s.id} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
-                                                                {s.name}
-                                                            </span>
-                                                        ))
-                                                    ) : (
-                                                        <span className="text-gray-400 italic">No services listed</span>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                                {allProviders.length === 0 && (
-                                    <tr>
-                                        <td colSpan="4" className="py-8 text-center text-gray-500 italic">No hospitals found.</td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                <HospitalDirectory />
             ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                    {/* Sidebar: Services List */}
+                    {/* Sidebar: Selection Controls */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden h-fit">
                         <div className="p-4 bg-gray-50 border-b border-gray-200">
                             <h2 className="font-semibold text-gray-700 flex items-center space-x-2">
                                 <Users size={18} />
-                                <span>My Services</span>
+                                <span>Queue Controls</span>
                             </h2>
                         </div>
-                        <div className="p-2">
-                            {services.length === 0 ? (
-                                <p className="text-gray-500 text-sm p-4 text-center">No services found.</p>
-                            ) : (
-                                <ul className="space-y-1">
-                                    {services.map(s => (
-                                        <li
-                                            key={s.id}
-                                            onClick={() => setSelectedService(s)}
-                                            className={`p-3 rounded-lg cursor-pointer transition-all ${selectedService?.id === s.id
-                                                ? "bg-blue-50 text-blue-700 font-medium shadow-sm ring-1 ring-blue-200"
-                                                : "hover:bg-gray-50 text-gray-600"
-                                                }`}
-                                        >
-                                            <div className="font-medium">{s.name}</div>
-                                            <div className="text-xs text-gray-400 mt-0.5">{s.provider_name}</div>
-                                        </li>
+                        <div className="p-4 space-y-4">
+                            {/* Hospital Selection */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Select Hospital</label>
+                                <select
+                                    className="w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 text-sm"
+                                    onChange={(e) => {
+                                        const providerId = parseInt(e.target.value);
+                                        const provider = myProviders.find(p => p.id === providerId);
+                                        if (provider) {
+                                            fetchServices(provider.id).then(setServices).catch(console.error);
+                                            setSelectedService(null);
+                                        } else {
+                                            setServices([]);
+                                            setSelectedService(null);
+                                        }
+                                    }}
+                                >
+                                    <option value="">-- Choose Hospital --</option>
+                                    {myProviders.map(p => (
+                                        <option key={p.id} value={p.id}>{p.name}</option>
                                     ))}
-                                </ul>
-                            )}
+                                </select>
+                            </div>
+
+                            {/* Service List */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Available Services</label>
+                                {services.length === 0 ? (
+                                    <p className="text-gray-400 text-xs italic">Select a hospital to view services.</p>
+                                ) : (
+                                    <ul className="space-y-1 max-h-60 overflow-y-auto">
+                                        {services.map(s => (
+                                            <li
+                                                key={s.id}
+                                                onClick={() => setSelectedService(s)}
+                                                className={`p-2 rounded-md cursor-pointer transition-all text-sm ${selectedService?.id === s.id
+                                                    ? "bg-blue-50 text-blue-700 font-medium shadow-sm ring-1 ring-blue-200"
+                                                    : "hover:bg-gray-50 text-gray-600 border border-transparent hover:border-gray-100"
+                                                    }`}
+                                            >
+                                                <div className="font-medium">{s.name}</div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
                         </div>
                     </div>
 
