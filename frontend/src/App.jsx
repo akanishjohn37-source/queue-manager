@@ -93,7 +93,9 @@ function NavBar() {
             <>
               <NavLink to="/user" onClick={() => setIsMenuOpen(false)}>BOOK TOKEN</NavLink>
               <NavLink to="/notifications" onClick={() => setIsMenuOpen(false)}>LIVE STATUS</NavLink>
-              <NavLink to="/provider" onClick={() => setIsMenuOpen(false)}>PROVIDER</NavLink>
+              {localStorage.getItem("is_staff") === "true" && (
+                <NavLink to="/provider" onClick={() => setIsMenuOpen(false)}>PROVIDER</NavLink>
+              )}
               {localStorage.getItem("is_staff") === "true" && (
                 <NavLink to="/admin" onClick={() => setIsMenuOpen(false)}>ADMIN</NavLink>
               )}

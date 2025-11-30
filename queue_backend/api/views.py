@@ -90,6 +90,13 @@ class ServiceViewSet(viewsets.ModelViewSet):
 # -----------------------
 # TokenViewSet
 # -----------------------
+from django.utils import timezone
+
+# ... (imports)
+
+# -----------------------
+# TokenViewSet
+# -----------------------
 class TokenViewSet(viewsets.ModelViewSet):
     """
     Create/list/update tokens. Creating a token auto-assigns next token_number.
@@ -114,9 +121,10 @@ class TokenViewSet(viewsets.ModelViewSet):
         user = self.request.user if self.request.user and self.request.user.is_authenticated else None
         service = serializer.validated_data.get("service")
 
-        # find last token number for service
+        # find last token number for service TODAY
+        today = timezone.now().date()
         last_token = (
-            QueueToken.objects.filter(service=service).order_by("-token_number").first()
+            QueueToken.objects.filter(service=service, issued_at__date=today).order_by("-token_number").first()
         )
         next_number = last_token.token_number + 1 if last_token else 1
 
@@ -141,7 +149,9 @@ class TokensByServiceView(APIView):
         if QueueToken is None:
             return Response({"detail": "Token model missing"}, status=500)
 
-        tokens = QueueToken.objects.filter(service_id=service_id).order_by("token_number")
+        # Filter by TODAY only
+        today = timezone.now().date()
+        tokens = QueueToken.objects.filter(service_id=service_id, issued_at__date=today).order_by("token_number")
         serializer = TokenSerializer(tokens, many=True)
         return Response(serializer.data)
 
