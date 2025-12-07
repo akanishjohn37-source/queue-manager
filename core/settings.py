@@ -120,6 +120,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:5173",
     "http://localhost:3000",
+    "https://queue-manager-seven.vercel.app",
 ]
 
 # DRF basic config (optional; expand later)
