@@ -197,9 +197,68 @@ class LoginView(APIView):
             return Response({"non_field_errors": ["Invalid credentials"]}, status=400)
 
         token_obj, _ = AuthToken.objects.get_or_create(user=user)
+        
+        # Check if user is a service staff (provider)
+        is_provider = hasattr(user, 'staff_profile')
+        
         return Response({
             "username": user.username,
             "token": token_obj.key,
             "user_id": user.id,
-            "is_staff": user.is_staff
+            "is_staff": user.is_staff,
+            "is_provider": is_provider
         })
+
+# -----------------------
+# Staff Management ViewSets
+# -----------------------
+from .serializers import StaffCreateSerializer, ServiceStaffSerializer
+from .models import ServiceStaff
+
+class StaffViewSet(viewsets.ModelViewSet):
+    """
+    Admin manages 'Staff' users here.
+    """
+    queryset = User.objects.all()
+    serializer_class = StaffCreateSerializer
+    permission_classes = [IsAuthenticated] # Should be Admin only ideally
+
+    def get_queryset(self):
+        # Return only users who are NOT superusers? Or maybe specific group?
+        # For now, let's return all users so Admin can see them.
+        # Or better: return users who have a ServiceStaff profile OR are candidates.
+        return User.objects.filter(is_superuser=False)
+
+class ServiceStaffViewSet(viewsets.ModelViewSet):
+    """
+    Link Staff -> Service.
+    """
+    queryset = ServiceStaff.objects.all()
+    serializer_class = ServiceStaffSerializer
+    permission_classes = [IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        # Custom logic to handle "assign" (update or create)
+        user_id = request.data.get('user')
+        service_id = request.data.get('service')
+        
+        if not user_id or not service_id:
+            return Response({"error": "User and Service required"}, status=400)
+
+        # Update if exists, else create
+        staff_profile, created = ServiceStaff.objects.update_or_create(
+            user_id=user_id,
+            defaults={'service_id': service_id}
+        )
+        serializer = self.get_serializer(staff_profile)
+        return Response(serializer.data)
+
+    def list(self, request, *args, **kwargs):
+        # Support fetching "my" service
+        if request.query_params.get('me'):
+            profile = getattr(request.user, 'staff_profile', None)
+            if not profile:
+                return Response({"detail": "Not a staff member"}, status=400)
+            serializer = self.get_serializer(profile)
+            return Response(serializer.data)
+        return super().list(request, *args, **kwargs)

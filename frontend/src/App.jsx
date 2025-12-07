@@ -16,6 +16,8 @@ function NavBar() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
   const isLoggedIn = !!localStorage.getItem("token");
+  const isProvider = localStorage.getItem("is_provider") === "true";
+  const isStaff = localStorage.getItem("is_staff") === "true";
   const username = localStorage.getItem("username");
 
   const handleLogout = () => {
@@ -59,12 +61,16 @@ function NavBar() {
           <div className="hidden md:flex items-center gap-6">
             {isLoggedIn ? (
               <>
-                <NavLink to="/user">BOOK TOKEN</NavLink>
-                <NavLink to="/notifications">LIVE STATUS</NavLink>
-                {localStorage.getItem("is_staff") === "true" && (
+                {!isProvider && (
+                  <>
+                    <NavLink to="/user">BOOK TOKEN</NavLink>
+                    <NavLink to="/notifications">LIVE STATUS</NavLink>
+                  </>
+                )}
+                {(isStaff || isProvider) && (
                   <NavLink to="/provider">PROVIDER</NavLink>
                 )}
-                {localStorage.getItem("is_staff") === "true" && (
+                {isStaff && (
                   <NavLink to="/admin">ADMIN</NavLink>
                 )}
                 <button
@@ -91,12 +97,16 @@ function NavBar() {
         <div className="flex flex-col gap-6">
           {isLoggedIn ? (
             <>
-              <NavLink to="/user" onClick={() => setIsMenuOpen(false)}>BOOK TOKEN</NavLink>
-              <NavLink to="/notifications" onClick={() => setIsMenuOpen(false)}>LIVE STATUS</NavLink>
-              {localStorage.getItem("is_staff") === "true" && (
+              {!isProvider && (
+                <>
+                  <NavLink to="/user" onClick={() => setIsMenuOpen(false)}>BOOK TOKEN</NavLink>
+                  <NavLink to="/notifications" onClick={() => setIsMenuOpen(false)}>LIVE STATUS</NavLink>
+                </>
+              )}
+              {(isStaff || isProvider) && (
                 <NavLink to="/provider" onClick={() => setIsMenuOpen(false)}>PROVIDER</NavLink>
               )}
-              {localStorage.getItem("is_staff") === "true" && (
+              {isStaff && (
                 <NavLink to="/admin" onClick={() => setIsMenuOpen(false)}>ADMIN</NavLink>
               )}
               <button
@@ -187,6 +197,12 @@ function AdminRoute({ children }) {
   return isStaff ? children : <Navigate to="/user" replace />;
 }
 
+function ProviderRoute({ children }) {
+  const isProvider = localStorage.getItem("is_provider") === "true";
+  // Admins can also see provider view if they want, or strictly providers
+  return isProvider || localStorage.getItem("is_staff") === "true" ? children : <Navigate to="/user" replace />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -214,9 +230,9 @@ export default function App() {
           } />
           <Route path="/provider" element={
             <PrivateRoute>
-              <AdminRoute>
+              <ProviderRoute>
                 <ProviderDashboard />
-              </AdminRoute>
+              </ProviderRoute>
             </PrivateRoute>
           } />
         </Routes>

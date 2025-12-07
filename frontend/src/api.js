@@ -1,6 +1,6 @@
 // frontend/src/api.js
-//const API_BASE = "http://127.0.0.1:8000/api";
-const API_BASE = "https://queue-manager-qnu1.onrender.com/api";
+const API_BASE = "http://127.0.0.1:8000/api";
+//const API_BASE = "https://queue-manager-qnu1.onrender.com/api";
 async function request(path, opts = {}) {
   const headers = new Headers(opts.headers || {});
   if (!headers.has("Content-Type") && !(opts.body instanceof FormData)) {
@@ -42,6 +42,7 @@ export async function loginUser(username, password) {
     localStorage.setItem("username", data.username);
     if (data.user_id) localStorage.setItem("user_id", data.user_id);
     if (data.is_staff !== undefined) localStorage.setItem("is_staff", data.is_staff);
+    if (data.is_provider !== undefined) localStorage.setItem("is_provider", data.is_provider);
   }
   return data;
 }
@@ -94,3 +95,26 @@ export async function apiPost(path, body) {
     body: JSON.stringify(body),
   });
 }
+
+// Staff / Provider Management
+export const fetchStaff = async () => {
+  return request("/staff/");
+};
+
+export const createStaff = async (userData) => {
+  return request("/staff/", {
+    method: "POST",
+    body: JSON.stringify(userData)
+  });
+};
+
+export const assignStaff = async (staffId, serviceId) => {
+  return request("/service-staff/", {
+    method: "POST",
+    body: JSON.stringify({ user: staffId, service: serviceId })
+  });
+};
+
+export const fetchMyService = async () => {
+  return request("/service-staff/?me=true");
+};

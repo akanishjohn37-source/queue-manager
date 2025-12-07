@@ -7,13 +7,17 @@ from .views import (
     TokenViewSet,
     TokensByServiceView,
     RegisterView,
-    LoginView
+    LoginView,
+    StaffViewSet,
+    ServiceStaffViewSet
 )
 
 router = DefaultRouter()
 router.register(r'providers', ProviderViewSet)
 router.register(r'services', ServiceViewSet)
 router.register(r'tokens', TokenViewSet)
+router.register(r'staff', StaffViewSet)
+router.register(r'service-staff', ServiceStaffViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

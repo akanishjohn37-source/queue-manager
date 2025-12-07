@@ -53,6 +53,13 @@ export default function AdminDashboard() {
             <Search size={20} />
             <span>User Search</span>
           </button>
+          <button
+            onClick={() => setActiveTab("staff")}
+            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-colors ${activeTab === "staff" ? "bg-blue-50 text-blue-700 font-medium" : "text-gray-600 hover:bg-gray-50"}`}
+          >
+            <Users size={20} />
+            <span>Staff Management</span>
+          </button>
         </nav>
       </div>
 
@@ -69,6 +76,10 @@ export default function AdminDashboard() {
         <button onClick={() => setActiveTab("services")} className={`p-2 flex flex-col items-center ${activeTab === "services" ? "text-blue-600" : "text-gray-500"}`}>
           <Stethoscope size={20} />
           <span className="text-xs mt-1">Services</span>
+        </button>
+        <button onClick={() => setActiveTab("staff")} className={`p-2 flex flex-col items-center ${activeTab === "staff" ? "text-blue-600" : "text-gray-500"}`}>
+          <Users size={20} />
+          <span className="text-xs mt-1">Staff</span>
         </button>
         <button onClick={() => setActiveTab("search")} className={`p-2 flex flex-col items-center ${activeTab === "search" ? "text-blue-600" : "text-gray-500"}`}>
           <Search size={20} />
@@ -89,6 +100,7 @@ export default function AdminDashboard() {
           {activeTab === "queue" && <QueueTab setMessage={setMessage} />}
           {activeTab === "providers" && <ProvidersTab setMessage={setMessage} />}
           {activeTab === "services" && <ServicesTab setMessage={setMessage} />}
+          {activeTab === "staff" && <StaffTab setMessage={setMessage} />}
           {activeTab === "search" && <UserSearchTab setMessage={setMessage} />}
         </div>
       </div>
@@ -513,6 +525,147 @@ function UserSearchTab({ setMessage }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function StaffTab({ setMessage }) {
+  const [staffList, setStaffList] = useState([]);
+  const [providers, setProviders] = useState([]);
+  const [services, setServices] = useState([]);
+
+  // Create Staff Form
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  // Assign Service Form
+  const [selectedStaff, setSelectedStaff] = useState("");
+  const [selectedProvider, setSelectedProvider] = useState("");
+  const [selectedService, setSelectedService] = useState("");
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const { fetchStaff } = await import("../api");
+      const [staff, provs] = await Promise.all([
+        fetchStaff(),
+        fetchProviders()
+      ]);
+      setStaffList(staff);
+      setProviders(provs);
+    } catch (err) {
+      console.error(err);
+      setMessage("Failed to load data");
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedProvider) {
+      setServices([]);
+      setSelectedService("");
+      return;
+    }
+    fetchServices(selectedProvider).then(setServices).catch(() => setMessage("Failed to load services"));
+  }, [selectedProvider, setMessage]);
+
+  const handleCreateStaff = async () => {
+    if (!username || !password) return setMessage("Username and Password required");
+    try {
+      const { createStaff } = await import("../api");
+      await createStaff({ username, email, password });
+      setMessage("Staff account created!");
+      setUsername(""); setEmail(""); setPassword("");
+      loadData();
+    } catch (err) {
+      setMessage("Failed to create staff");
+    }
+  };
+
+  const handleAssign = async () => {
+    if (!selectedStaff || !selectedService) return setMessage("Select Staff and Service");
+    try {
+      const { assignStaff } = await import("../api");
+      await assignStaff(selectedStaff, selectedService);
+      setMessage("Staff assigned to service!");
+      setSelectedStaff(""); setSelectedService(""); setSelectedProvider("");
+    } catch (err) {
+      setMessage("Failed to assign staff");
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* Create Staff */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <h3 className="font-bold text-lg text-gray-800 mb-4 flex items-center gap-2">
+          <Users size={20} className="text-purple-600" />
+          Create Staff Account
+        </h3>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+            <input className="w-full border p-2.5 rounded-lg" value={username} onChange={e => setUsername(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input className="w-full border p-2.5 rounded-lg" value={email} onChange={e => setEmail(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Temporary Password</label>
+            <input className="w-full border p-2.5 rounded-lg" type="password" value={password} onChange={e => setPassword(e.target.value)} />
+          </div>
+          <button onClick={handleCreateStaff} className="w-full bg-purple-600 text-white py-2.5 rounded-lg font-semibold hover:bg-purple-700">
+            Create Account
+          </button>
+        </div>
+      </div>
+
+      {/* Assign Service */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+        <h3 className="font-bold text-lg text-gray-800 mb-4 flex items-center gap-2">
+          <Stethoscope size={20} className="text-purple-600" />
+          Assign Staff to Service
+        </h3>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Select Staff Member</label>
+            <select className="w-full border p-2.5 rounded-lg bg-white" value={selectedStaff} onChange={e => setSelectedStaff(e.target.value)}>
+              <option value="">-- Select Staff --</option>
+              {staffList.map(u => <option key={u.id} value={u.id}>{u.username} ({u.email})</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Select Hospital</label>
+            <select
+              className="w-full border p-2.5 rounded-lg bg-white"
+              value={selectedProvider}
+              onChange={e => setSelectedProvider(e.target.value)}
+            >
+              <option value="">-- Select Hospital --</option>
+              {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Select Service</label>
+            <select
+              className="w-full border p-2.5 rounded-lg bg-white"
+              value={selectedService}
+              onChange={e => setSelectedService(e.target.value)}
+              disabled={!selectedProvider}
+            >
+              <option value="">-- Select Service --</option>
+              {services.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <button onClick={handleAssign} className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-semibold hover:bg-blue-700">
+            Assign Service
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

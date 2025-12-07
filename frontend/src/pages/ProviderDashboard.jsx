@@ -14,11 +14,30 @@ export default function ProviderDashboard() {
 
     useEffect(() => {
         if (!userId) return;
-        fetchProviders().then((allProviders) => {
-            // Show all providers so staff can manage any hospital they are assigned to
-            setMyProviders(allProviders);
-            setLoading(false);
-        }).catch(console.error);
+
+        // Try to fetch assigned service first
+        import("../api").then(({ fetchMyService }) => {
+            fetchMyService().then(assignment => {
+                if (assignment && assignment.service) {
+                    // Assignment object has { service: ID, service_name: "Name" } from serializer
+                    // Construct a service object compatible with selectedService logic
+                    setSelectedService({ id: assignment.service, name: assignment.service_name });
+                    setLoading(false);
+                } else {
+                    // Fallback for demo/testing or if not assigned
+                    fetchProviders().then((allProviders) => {
+                        setMyProviders(allProviders);
+                        setLoading(false);
+                    }).catch(console.error);
+                }
+            }).catch(() => {
+                // Fallback if fetchMyService fails (e.g. not a staff user or endpoint error)
+                fetchProviders().then((allProviders) => {
+                    setMyProviders(allProviders);
+                    setLoading(false);
+                }).catch(console.error);
+            });
+        });
     }, [userId]);
 
     // useEffect for loading services removed to prevent auto-loading all services.
@@ -108,56 +127,26 @@ export default function ProviderDashboard() {
                         <div className="p-4 bg-gray-50 border-b border-gray-200">
                             <h2 className="font-semibold text-gray-700 flex items-center space-x-2">
                                 <Users size={18} />
-                                <span>Queue Controls</span>
+                                <span>My Station</span>
                             </h2>
                         </div>
-                        <div className="p-4 space-y-4">
-                            {/* Hospital Selection */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Select Hospital</label>
-                                <select
-                                    className="w-full border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 p-2 text-sm"
-                                    onChange={(e) => {
-                                        const providerId = parseInt(e.target.value);
-                                        const provider = myProviders.find(p => p.id === providerId);
-                                        if (provider) {
-                                            fetchServices(provider.id).then(setServices).catch(console.error);
-                                            setSelectedService(null);
-                                        } else {
-                                            setServices([]);
-                                            setSelectedService(null);
-                                        }
-                                    }}
-                                >
-                                    <option value="">-- Choose Hospital --</option>
-                                    {myProviders.map(p => (
-                                        <option key={p.id} value={p.id}>{p.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {/* Service List */}
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Available Services</label>
-                                {services.length === 0 ? (
-                                    <p className="text-gray-400 text-xs italic">Select a hospital to view services.</p>
-                                ) : (
-                                    <ul className="space-y-1 max-h-60 overflow-y-auto">
-                                        {services.map(s => (
-                                            <li
-                                                key={s.id}
-                                                onClick={() => setSelectedService(s)}
-                                                className={`p-2 rounded-md cursor-pointer transition-all text-sm ${selectedService?.id === s.id
-                                                    ? "bg-blue-50 text-blue-700 font-medium shadow-sm ring-1 ring-blue-200"
-                                                    : "hover:bg-gray-50 text-gray-600 border border-transparent hover:border-gray-100"
-                                                    }`}
-                                            >
-                                                <div className="font-medium">{s.name}</div>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                )}
-                            </div>
+                        <div className="p-4">
+                            {selectedService ? (
+                                <div>
+                                    <div className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Assigned Service</div>
+                                    <div className="font-bold text-lg text-blue-700 mb-1">{selectedService.name}</div>
+                                    {/* We can fetch provider name if we want, or just show service */}
+                                    <div className="text-sm text-gray-500 flex items-center gap-1">
+                                        <CheckCircle size={14} className="text-green-500" />
+                                        <span>Active & Online</span>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-center py-4">
+                                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                                    <p className="text-sm text-gray-500">Loading your assignment...</p>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -262,13 +251,72 @@ export default function ProviderDashboard() {
                                                 ))}
                                                 {waitingTokens.length === 0 && (
                                                     <tr>
-                                                        <td colSpan="4" className="py-8 text-center text-gray-500 italic">Queue is empty. Great job!</td>
+                                                        <td colSpan="4" className="py-8 text-center text-gray-500 italic">Queue is empty.</td>
                                                     </tr>
                                                 )}
                                             </tbody>
                                         </table>
                                     </div>
                                 </div>
+
+                                {/* Skipped / On Hold Queue */}
+                                {tokens.some(t => t.status === "skipped") && (
+                                    <div className="bg-white rounded-xl shadow-sm border border-orange-200 overflow-hidden mt-6">
+                                        <div className="p-4 border-b border-orange-100 flex justify-between items-center bg-orange-50">
+                                            <h2 className="text-lg font-semibold text-orange-800 flex items-center">
+                                                <Clock size={20} className="mr-2" />
+                                                On Hold / Skipped
+                                            </h2>
+                                        </div>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left">
+                                                <tbody className="divide-y divide-orange-100">
+                                                    {tokens.filter(t => t.status === "skipped").map(t => (
+                                                        <tr key={t.id} className="hover:bg-orange-50/50 transition-colors">
+                                                            <td className="py-3 px-6 font-bold text-gray-800">#{t.token_number}</td>
+                                                            <td className="py-3 px-6 text-gray-600">{t.visitor_name || "User"}</td>
+                                                            <td className="py-3 px-6 text-right">
+                                                                <button
+                                                                    onClick={() => handleStatusUpdate(t.id, "calling")}
+                                                                    className="px-3 py-1 bg-white border border-blue-200 text-blue-600 hover:bg-blue-50 rounded text-xs font-semibold"
+                                                                >
+                                                                    Recall
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Completed / Served History */}
+                                {tokens.some(t => t.status === "completed") && (
+                                    <div className="bg-white rounded-xl shadow-sm border border-green-200 overflow-hidden mt-6">
+                                        <div className="p-4 border-b border-green-100 flex justify-between items-center bg-green-50">
+                                            <h2 className="text-lg font-semibold text-green-800 flex items-center">
+                                                <CheckCircle size={20} className="mr-2" />
+                                                Called Members / Served
+                                            </h2>
+                                        </div>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left">
+                                                <tbody className="divide-y divide-green-100">
+                                                    {tokens.filter(t => t.status === "completed").slice(0, 10).map(t => (
+                                                        <tr key={t.id} className="hover:bg-green-50/50 transition-colors">
+                                                            <td className="py-3 px-6 font-bold text-gray-800">#{t.token_number}</td>
+                                                            <td className="py-3 px-6 text-gray-600">{t.visitor_name || "User"}</td>
+                                                            <td className="py-3 px-6 text-gray-500 text-right text-sm">
+                                                                Completed at {t.updated_at ? new Date(t.updated_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "-"}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
                             </>
                         ) : (
                             <div className="flex flex-col items-center justify-center h-64 bg-white rounded-xl shadow-sm border border-gray-200 text-gray-500">

@@ -150,3 +150,31 @@ class RegisterSerializer(serializers.ModelSerializer):
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField(write_only=True)
+
+# -------------------------
+# Staff Management
+# -------------------------
+class StaffCreateSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'password']
+
+    def create(self, validated_data):
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data.get('email', ''),
+            password=validated_data['password']
+        )
+        return user
+
+class ServiceStaffSerializer(serializers.ModelSerializer):
+    # Retrieve nested data for display
+    user_name = serializers.ReadOnlyField(source='user.username')
+    service_name = serializers.ReadOnlyField(source='service.name')
+
+    class Meta:
+        model = _models.ServiceStaff
+        fields = ['id', 'user', 'user_name', 'service', 'service_name', 'created_at']
+        read_only_fields = ['created_at']
