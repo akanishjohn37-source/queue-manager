@@ -12,6 +12,13 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+CSRF_TRUSTED_ORIGINS = [
+    "https://*.onrender.com",
+    "https://*.vercel.app",
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+]
+
 SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-replace-this-with-your-own-key-for-prod')
 DEBUG = 'RENDER' not in os.environ
 ALLOWED_HOSTS = ["*"]
