@@ -29,7 +29,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework.authtoken",
     "corsheaders",       # <- add this
-    "queue_backend.api", # or "api" depending how your project references the app
+    "queue_backend.api.apps.ApiConfig",
 ]
 
 MIDDLEWARE = [
