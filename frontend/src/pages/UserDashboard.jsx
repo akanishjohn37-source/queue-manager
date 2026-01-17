@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { fetchProviders, fetchServices, fetchTokensByService, createToken } from "../api";
-import { Building2, Stethoscope, User, Ticket, Clock, CheckCircle, AlertCircle } from "lucide-react";
+import { Building2, Stethoscope, User, Ticket, Clock, CheckCircle, AlertCircle, Calendar, ChevronRight, Search, Zap, BellRing } from "lucide-react";
 
 import HospitalDirectory from "../components/HospitalDirectory";
 
@@ -16,11 +16,11 @@ export default function UserDashboard() {
 
   const [queue, setQueue] = useState([]);
   const [message, setMessage] = useState("");
-  const [myTokens, setMyTokens] = useState([]); // Track tokens created in this session
+  const [myTokens, setMyTokens] = useState([]);
 
   // Load Providers
   useEffect(() => {
-    fetchProviders().then(setProviders).catch(() => setMessage("Failed to load hospitals"));
+    fetchProviders().then(setProviders).catch(() => setMessage("Failed to load clinical network"));
   }, []);
 
   // Load Services when Provider changes
@@ -29,10 +29,9 @@ export default function UserDashboard() {
       setServices([]);
       return;
     }
-    fetchServices(selectedProvider).then(setServices).catch(() => setMessage("Failed to load services"));
+    fetchServices(selectedProvider).then(setServices).catch(() => setMessage("Failed to load department services"));
   }, [selectedProvider]);
 
-  // Poll Queue
   const loadQueue = () => {
     if (!selectedService) {
       setQueue([]);
@@ -42,7 +41,7 @@ export default function UserDashboard() {
       .then((data) => {
         setQueue(data);
       })
-      .catch(() => setMessage("Failed to load queue"));
+      .catch(() => setMessage("Connection error during queue fetch"));
   };
 
   useEffect(() => {
@@ -52,190 +51,146 @@ export default function UserDashboard() {
     return () => clearInterval(id);
   }, [selectedService]);
 
-  // Request Notification Permission
-  useEffect(() => {
-    if ("Notification" in window) {
-      Notification.requestPermission();
-    }
-  }, []);
-
-  const playNotificationSound = () => {
-    // Simple beep sound (Base64)
-    const audio = new Audio("https://codeskulptor-demos.commondatastorage.googleapis.com/pang/pop.mp3");
-    audio.play().catch(e => console.error("Audio play failed:", e));
-  };
-
-  const notifyUser = (token) => {
-    if (Notification.permission === "granted") {
-      new Notification("Token Called!", {
-        body: `Token #${token.token_number} for ${token.visitor_name} is now being served!`,
-        icon: "/vite.svg"
-      });
-    }
-    playNotificationSound();
-  };
-
-  // Monitor Queue for Status Changes
-  useEffect(() => {
-    if (queue.length === 0) return;
-
-    setMyTokens(prevTokens => {
-      let hasChanges = false;
-      const newTokens = prevTokens.map(t => {
-        const match = queue.find(q => q.id === t.id);
-        if (match && match.status !== t.status) {
-          hasChanges = true;
-          // Trigger notification if status changes to 'calling'
-          if (match.status === 'calling' && t.status === 'waiting') {
-            notifyUser(match);
-          }
-          return match;
-        }
-        return t;
-      });
-      return hasChanges ? newTokens : prevTokens;
-    });
-  }, [queue]);
-
   const handleCreateToken = async () => {
     if (!selectedService || !visitorName || !selectedTime) {
-      setMessage("Please select a hospital, service, time slot, and enter a name.");
+      setMessage("All identity and scheduling fields must be completed.");
       return;
     }
     try {
       const token = await createToken(selectedService, visitorName, selectedTime);
-      setMessage(`Success! Your token number is #${token.token_number} for ${selectedTime}`);
-      setMyTokens(prev => [...prev, token]);
-      setVisitorName(""); // Clear name for next booking
-      setSelectedTime(""); // Clear time
+      setMessage(`Confirmed! Your unique entry token is #${token.token_number} for the ${selectedTime} window.`);
+      setMyTokens(prev => [token, ...prev]);
+      setVisitorName("");
+      setSelectedTime("");
       loadQueue();
     } catch (err) {
-      console.error(err);
-      setMessage("Error generating token");
+      setMessage("System error during token generation");
     }
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">User Dashboard</h1>
-          <p className="text-gray-500 mt-1">Book tokens and view hospital details</p>
+    <div className="max-w-7xl mx-auto px-6 py-12 space-y-12 animate-fade-in">
+      {/* Hero Header */}
+      <div className="relative overflow-hidden bg-white premium-card p-10 flex flex-col md:flex-row items-center justify-between gap-8 border-none ring-1 ring-slate-200/50">
+        <div className="relative z-10 space-y-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-[10px] font-bold uppercase tracking-wider mb-2">
+            <Zap size={12} />
+            Real-time Systems Active
+          </div>
+          <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">Client Hub</h1>
+          <p className="text-slate-500 font-medium text-lg">Securely manage clinical scheduling and live status monitoring.</p>
         </div>
-        <div className="flex bg-gray-100 p-1 rounded-lg">
+
+        <div className="relative z-10 flex bg-slate-100 p-1.5 rounded-2xl w-full md:w-auto">
           <button
             onClick={() => setViewMode("book")}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${viewMode === "book" ? "bg-white text-blue-600 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}
+            className={`flex-1 md:flex-none px-8 py-3 rounded-xl text-sm font-bold transition-all duration-300 flex items-center justify-center gap-2 ${viewMode === "book" ? "bg-white text-blue-600 shadow-lg shadow-blue-500/10" : "text-slate-500 hover:text-slate-900"}`}
           >
-            Book Token
+            <Ticket size={18} />
+            Appointment Booking
           </button>
           <button
             onClick={() => setViewMode("directory")}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${viewMode === "directory" ? "bg-white text-blue-600 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}
+            className={`flex-1 md:flex-none px-8 py-3 rounded-xl text-sm font-bold transition-all duration-300 flex items-center justify-center gap-2 ${viewMode === "directory" ? "bg-white text-blue-600 shadow-lg shadow-blue-500/10" : "text-slate-500 hover:text-slate-900"}`}
           >
-            Hospital Directory
+            <Building2 size={18} />
+            Global Directory
           </button>
         </div>
       </div>
 
       {viewMode === "directory" ? (
-        <HospitalDirectory />
+        <div className="animate-scale-in">
+          <HospitalDirectory />
+        </div>
       ) : (
-        <>
-          {message && (
-            <div className={`max-w-4xl mx-auto p-4 rounded-lg flex items-center space-x-2 ${message.includes("Success") ? "bg-green-50 text-green-700" : "bg-blue-50 text-blue-700"}`}>
-              {message.includes("Success") ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-              <span>{message}</span>
-            </div>
-          )}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
+          {/* Left Column: Form */}
+          <div className="lg:col-span-12">
+            {message && (
+              <div className={`mb-10 p-5 rounded-2xl flex items-center gap-4 animate-fade-in font-semibold border ${message.includes("Confirmed") ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-blue-50 text-blue-700 border-blue-100"}`}>
+                {message.includes("Confirmed") ? <CheckCircle className="shrink-0" size={24} /> : <AlertCircle className="shrink-0" size={24} />}
+                <span className="text-sm md:text-base">{message}</span>
+              </div>
+            )}
+          </div>
 
-          <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Booking Form */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
-              <h2 className="text-xl font-semibold text-gray-800 flex items-center space-x-2">
-                <Ticket className="text-blue-600" />
-                <span>New Booking</span>
-              </h2>
+          <div className="lg:col-span-7 space-y-10">
+            <div className="premium-card p-10 space-y-10">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-6">
+                <h2 className="text-2xl font-bold flex items-center gap-3">
+                  <span className="p-2 bg-blue-600 rounded-lg text-white shadow-lg shadow-blue-500/20">
+                    <Zap size={20} />
+                  </span>
+                  Scheduling Matrix
+                </h2>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Step 1-4</span>
+              </div>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Select Hospital</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Building2 className="h-5 w-5 text-gray-400" />
+              <div className="space-y-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-3">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest ml-1">Clinical Institution</label>
+                    <div className="relative group">
+                      <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 pointer-events-none" size={18} />
+                      <select
+                        className="premium-input !pl-12 !py-4 appearance-none font-bold"
+                        value={selectedProvider}
+                        onChange={(e) => setSelectedProvider(e.target.value)}
+                      >
+                        <option value="">Select Hospital</option>
+                        {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
                     </div>
-                    <select
-                      className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors appearance-none bg-white"
-                      value={selectedProvider}
-                      onChange={(e) => {
-                        setSelectedProvider(e.target.value);
-                        setSelectedService("");
-                      }}
-                    >
-                      <option value="">-- Choose Hospital --</option>
-                      {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest ml-1">Specialized Service</label>
+                    <div className="relative group">
+                      <Stethoscope className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 pointer-events-none" size={18} />
+                      <select
+                        className="premium-input !pl-12 !py-4 appearance-none font-bold disabled:bg-slate-50"
+                        value={selectedService}
+                        onChange={(e) => setSelectedService(e.target.value)}
+                        disabled={!selectedProvider}
+                      >
+                        <option value="">Choose Department</option>
+                        {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                      </select>
+                    </div>
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Select Service</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Stethoscope className="h-5 w-5 text-gray-400" />
-                    </div>
-                    <select
-                      className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors appearance-none bg-white"
-                      value={selectedService}
-                      onChange={(e) => setSelectedService(e.target.value)}
-                      disabled={!selectedProvider}
-                    >
-                      <option value="">-- Choose Service --</option>
-                      {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Visitor Name</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <User className="h-5 w-5 text-gray-400" />
-                    </div>
+                <div className="space-y-3">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest ml-1">Visitor Full Identity</label>
+                  <div className="relative group">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 pointer-events-none" size={18} />
                     <input
-                      className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                      placeholder="Enter name"
+                      className="premium-input !pl-12 !py-4 font-bold"
+                      placeholder="Enter legal name"
                       value={visitorName}
                       onChange={(e) => setVisitorName(e.target.value)}
                     />
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Select Time Slot</label>
-                  <div className="grid grid-cols-4 gap-2">
+                <div className="space-y-4">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                    <Calendar size={14} />
+                    Preferred Operation Window
+                  </label>
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
                     {["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
-                      "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00"].map((time, index) => {
-                        // VIBGYOR Colors Mapping
-                        const colors = [
-                          "bg-violet-500 hover:bg-violet-600", // 8-9
-                          "bg-indigo-500 hover:bg-indigo-600", // 9-10
-                          "bg-blue-500 hover:bg-blue-600",     // 10-11
-                          "bg-green-500 hover:bg-green-600",   // 11-12
-                          "bg-yellow-500 hover:bg-yellow-600", // 12-13
-                          "bg-orange-500 hover:bg-orange-600", // 13-14
-                          "bg-red-500 hover:bg-red-600"        // 14-15
-                        ];
-                        // Map index to color group (approx 2 slots per hour)
-                        const colorClass = colors[Math.floor(index / 2)] || "bg-gray-500";
+                      "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00"].map((time) => {
                         const isSelected = selectedTime === time;
-
                         return (
                           <button
                             key={time}
                             onClick={() => setSelectedTime(time)}
-                            className={`py-2 px-1 rounded text-white text-xs font-bold transition-all transform ${isSelected ? "ring-4 ring-offset-1 ring-gray-400 scale-105" : ""
-                              } ${colorClass}`}
+                            className={`py-3 px-1 rounded-xl text-[13px] font-bold transition-all duration-300 border-2 ${isSelected
+                                ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105"
+                                : "bg-white border-slate-100 text-slate-700 hover:border-blue-200 hover:bg-blue-50"
+                              }`}
                           >
                             {time}
                           </button>
@@ -246,87 +201,130 @@ export default function UserDashboard() {
 
                 <button
                   onClick={handleCreateToken}
-                  className="w-full bg-blue-600 text-white font-semibold py-2.5 px-4 rounded-lg hover:bg-blue-700 transition-colors shadow-sm flex justify-center items-center space-x-2 mt-4"
+                  className="btn-primary w-full !py-5 text-lg flex items-center justify-center gap-3 group"
                 >
-                  <span>Generate Token</span>
+                  <zap size={20} className="group-hover:animate-pulse" />
+                  <span>Execute Booking Request</span>
+                  <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
                 </button>
               </div>
             </div>
 
-            {/* My Recent Tokens */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col h-full">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center space-x-2">
-                <Clock className="text-blue-600" />
-                <span>My Recent Tokens</span>
-              </h2>
+            {/* Current Queue Display */}
+            {selectedService && (
+              <div className="premium-card p-10 animate-fade-in border-blue-100 bg-blue-50/20">
+                <div className="flex items-center gap-4 mb-8">
+                  <div className="bg-blue-600 p-2 rounded-xl text-white">
+                    <BellRing size={20} className="animate-bounce" />
+                  </div>
+                  <h2 className="text-2xl font-bold text-slate-900 leading-none">Live Service Stream</h2>
+                </div>
 
-              <div className="flex-grow overflow-y-auto pr-2">
-                {myTokens.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-2">
-                    <Ticket size={48} className="opacity-20" />
-                    <p>No tokens booked yet</p>
+                {queue.length === 0 ? (
+                  <div className="text-center py-12 bg-white/50 rounded-2xl border border-dashed border-slate-200">
+                    <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Waiting for active tokens...</p>
                   </div>
                 ) : (
-                  <ul className="space-y-3">
-                    {myTokens.map((t) => (
-                      <li key={t.id} className="bg-gray-50 p-4 rounded-lg border border-gray-100 flex justify-between items-center hover:bg-blue-50 transition-colors">
-                        <div>
-                          <div className="font-bold text-blue-700 text-lg">#{t.token_number}</div>
-                          <div className="text-gray-600 text-sm">{t.visitor_name}</div>
-                        </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide
-                          ${t.status === 'completed' ? 'bg-green-100 text-green-800' :
-                            t.status === 'calling' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                          {t.status}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                    <table className="w-full text-left">
+                      <thead className="bg-slate-50">
+                        <tr className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                          <th className="py-5 px-6">Sequence</th>
+                          <th className="py-5 px-6">Identity</th>
+                          <th className="py-5 px-6">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {queue.map((t) => (
+                          <tr key={t.id} className={`transition-all ${t.status === 'calling' ? 'bg-blue-50/50' : 'hover:bg-slate-50'}`}>
+                            <td className="py-5 px-6 font-black text-blue-600 text-lg tracking-tighter">#{t.token_number}</td>
+                            <td className="py-5 px-6 font-bold text-slate-700">{t.visitor_name}</td>
+                            <td className="py-5 px-6">
+                              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest
+                                ${t.status === 'calling' ? 'bg-emerald-100 text-emerald-700' :
+                                  t.status === 'waiting' ? 'bg-amber-100 text-amber-700' :
+                                    'bg-slate-100 text-slate-500'}`}>
+                                <div className={`w-1.5 h-1.5 rounded-full ${t.status === 'calling' ? 'bg-emerald-500 animate-ping' : 'bg-current'}`} />
+                                {t.status}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* Right Column: History */}
+          <div className="lg:col-span-5 space-y-10">
+            <div className="premium-card p-10 sticky top-32 flex flex-col h-[800px] border-amber-100">
+              <div className="flex items-center justify-between mb-10 pb-6 border-b border-slate-100">
+                <h2 className="text-2xl font-bold flex items-center gap-3">
+                  <span className="p-2 bg-slate-900 rounded-lg text-white">
+                    <Clock size={20} />
+                  </span>
+                  Session History
+                </h2>
+              </div>
+
+              <div className="flex-grow overflow-y-auto pr-4 custom-scrollbar">
+                {myTokens.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center px-6">
+                    <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-6 opacity-50">
+                      <Ticket size={40} className="text-slate-400" />
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-400">Empty Register</h3>
+                    <p className="text-slate-400 text-sm mt-2">Active session history will populate here upon booking.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {myTokens.map((t) => (
+                      <div key={t.id} className="group relative p-6 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-500">
+                        <div className="flex justify-between items-start mb-4">
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Entry Ref</span>
+                            <div className="text-3xl font-black text-slate-900 tracking-tighter">#{t.token_number}</div>
+                          </div>
+                          <span className={`inline-flex px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest leading-none
+                            ${t.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
+                              t.status === 'calling' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white shadow-sm text-slate-500 border border-slate-100'}`}>
+                            {t.status}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-6 mt-6 pt-6 border-t border-slate-200/50">
+                          <div className="flex items-center gap-2 text-slate-500 shrink-0">
+                            <User size={16} />
+                            <span className="text-xs font-bold truncate max-w-[80px]">{t.visitor_name}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-slate-500">
+                            <Clock size={16} />
+                            <span className="text-xs font-bold">{t.appointment_time || "Now"}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-8 p-6 bg-slate-900 rounded-2xl text-white">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">System Analytics</span>
+                </div>
+                <div className="flex justify-between items-end">
+                  <div className="text-2xl font-black">{myTokens.length}</div>
+                  <div className="text-[10px] text-slate-500 font-bold mb-1">Total session tokens</div>
+                </div>
               </div>
             </div>
           </div>
-
-          {/* Current Queue Display */}
-          {selectedService && (
-            <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Current Queue Status</h2>
-              {queue.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">No tokens in queue currently.</p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="border-b text-gray-500 text-sm uppercase tracking-wider">
-                        <th className="py-3 px-4">Token</th>
-                        <th className="py-3 px-4">Name</th>
-                        <th className="py-3 px-4">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {queue.map((t) => (
-                        <tr key={t.id} className={`hover:bg-gray-50 transition-colors ${t.status === 'calling' ? 'bg-blue-50' : ''}`}>
-                          <td className="py-3 px-4 font-bold text-gray-800">#{t.token_number}</td>
-                          <td className="py-3 px-4 text-gray-600">{t.visitor_name}</td>
-                          <td className="py-3 px-4">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold uppercase
-                              ${t.status === 'calling' ? 'bg-green-100 text-green-800' :
-                                t.status === 'waiting' ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-gray-100 text-gray-800'}`}>
-                              {t.status}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-          )}
-        </>
+        </div>
       )}
     </div>
   );
 }
-

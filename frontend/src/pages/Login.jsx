@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { loginUser } from "../api";
 import { useNavigate, Link } from "react-router-dom";
-import { LogIn, User, Lock, LogOut, LayoutDashboard } from "lucide-react";
+import { LogIn, User, Lock, LogOut, LayoutDashboard, ArrowRight } from "lucide-react";
 
 export default function Login() {
   const [username, setUsername] = useState("");
@@ -35,7 +35,9 @@ export default function Login() {
 
   const handleGoToDashboard = () => {
     const isStaff = localStorage.getItem("is_staff") === "true";
-    if (isStaff) nav("/admin");
+    const isProvider = localStorage.getItem("is_provider") === "true";
+    if (isProvider) nav("/provider");
+    else if (isStaff) nav("/admin");
     else nav("/user");
   };
 
@@ -45,13 +47,9 @@ export default function Login() {
     setLoading(true);
     try {
       await loginUser(username, password);
-      setMsg("Login successful");
-      // Redirect based on role or default
+      // Success redirect logic in loginUser usually sets storage
       const isStaff = localStorage.getItem("is_staff") === "true";
       const isProvider = localStorage.getItem("is_provider") === "true";
-
-      setUsername("");
-      setPassword("");
 
       if (isProvider) nav("/provider");
       else if (isStaff) nav("/admin");
@@ -71,31 +69,26 @@ export default function Login() {
 
   if (isLoggedIn) {
     return (
-      <div className="flex justify-center items-center min-h-[60vh]">
-        <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md border border-gray-100 text-center">
-          <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <User className="text-green-600 w-8 h-8" />
+      <div className="flex justify-center items-center min-h-[70vh] px-6">
+        <div className="premium-card p-10 w-full max-w-md text-center">
+          <div className="bg-blue-50 w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-6 transform rotate-3 transition-transform hover:rotate-0 duration-300">
+            <User className="text-blue-600 w-10 h-10" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome Back!</h2>
-          <p className="text-gray-600 mb-6">
-            You are currently logged in as <span className="font-semibold text-gray-800">{currentUser}</span>.
+          <h2 className="text-3xl font-bold text-slate-900 mb-2">Welcome Back!</h2>
+          <p className="text-slate-500 mb-8">
+            Signed in as <span className="font-bold text-blue-600">{currentUser}</span>
           </p>
 
-          <div className="space-y-3">
-            <button
-              onClick={handleGoToDashboard}
-              className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-            >
-              <LayoutDashboard size={18} />
-              <span>Go to Dashboard</span>
+          <div className="space-y-4">
+            <button onClick={handleGoToDashboard} className="btn-primary w-full flex items-center justify-center gap-2 group">
+              <LayoutDashboard size={20} className="group-hover:rotate-12 transition-transform" />
+              <span>Enter Dashboard</span>
+              <ArrowRight size={18} className="translate-x-0 group-hover:translate-x-1 transition-transform" />
             </button>
 
-            <button
-              onClick={handleLogout}
-              className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-colors"
-            >
+            <button onClick={handleLogout} className="w-full py-3 text-sm font-semibold text-slate-500 hover:text-red-500 transition-colors flex items-center justify-center gap-2 bg-slate-50 hover:bg-red-50 rounded-xl">
               <LogOut size={18} />
-              <span>Logout</span>
+              <span>Log out of session</span>
             </button>
           </div>
         </div>
@@ -104,32 +97,32 @@ export default function Login() {
   }
 
   return (
-    <div className="flex justify-center items-center min-h-[60vh]">
-      <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md border border-gray-100">
-        <div className="text-center mb-8">
-          <div className="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+    <div className="flex justify-center items-center min-h-[80vh] px-6 bg-gradient-to-b from-white to-slate-50">
+      <div className="premium-card p-10 w-full max-w-md animate-scale-in">
+        <div className="text-center mb-10">
+          <div className="bg-blue-600/10 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6">
             <LogIn className="text-blue-600 w-8 h-8" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">Welcome Back</h2>
-          <p className="text-gray-500 mt-2">Please sign in to continue</p>
+          <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Account Login</h2>
+          <p className="text-slate-500 mt-2 font-medium">Please enter your credentials to proceed</p>
         </div>
 
         {msg && (
-          <div className={`mb-6 p-4 rounded-lg text-sm ${msg.includes("successful") ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+          <div className={`mb-8 p-4 rounded-xl text-sm font-medium animate-fade-in ${msg.includes("successful") ? "bg-emerald-50 text-emerald-700 border border-emerald-100" : "bg-rose-50 text-rose-700 border border-rose-100"}`}>
             {msg}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <User className="h-5 w-5 text-gray-400" />
+          <div className="space-y-2">
+            <label className="block text-sm font-bold text-slate-700 ml-1">Username</label>
+            <div className="relative group">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors group-focus-within:text-blue-600 text-slate-400">
+                <User size={18} />
               </div>
               <input
-                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                placeholder="Enter your username"
+                className="premium-input !pl-12"
+                placeholder="Ex: jsmith_23"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
@@ -137,16 +130,16 @@ export default function Login() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Lock className="h-5 w-5 text-gray-400" />
+          <div className="space-y-2">
+            <label className="block text-sm font-bold text-slate-700 ml-1">Secret Password</label>
+            <div className="relative group">
+              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none transition-colors group-focus-within:text-blue-600 text-slate-400">
+                <Lock size={18} />
               </div>
               <input
-                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                className="premium-input !pl-12"
                 type="password"
-                placeholder="Enter your password"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -154,20 +147,23 @@ export default function Login() {
             </div>
           </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {loading ? "Signing in..." : "Sign In"}
+          <button type="submit" disabled={loading} className="btn-primary w-full mt-4 flex items-center justify-center gap-3 group">
+            {loading ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+            ) : (
+              <>
+                <span>Secure Sign In</span>
+                <ArrowRight size={18} className="translate-x-0 group-hover:translate-x-1 transition-transform" />
+              </>
+            )}
           </button>
         </form>
 
-        <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600">
-            Don't have an account?{" "}
-            <Link to="/register" className="font-medium text-blue-600 hover:text-blue-500">
-              Create account
+        <div className="mt-10 pt-8 border-t border-slate-100 text-center">
+          <p className="text-sm text-slate-500 font-medium">
+            New to our platform?{" "}
+            <Link to="/register" className="text-blue-600 hover:text-blue-700 font-bold decoration-blue-200 underline-offset-4 hover:underline">
+              Start your application
             </Link>
           </p>
         </div>
@@ -175,4 +171,3 @@ export default function Login() {
     </div>
   );
 }
-

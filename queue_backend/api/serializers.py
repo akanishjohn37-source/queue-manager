@@ -123,10 +123,13 @@ else:
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
     password2 = serializers.CharField(write_only=True, required=True, label="Confirm password")
+    phone = serializers.CharField(write_only=True, required=True)
+    age = serializers.IntegerField(write_only=True, required=True)
+    dob = serializers.DateField(write_only=True, required=True)
 
     class Meta:
         model = User
-        fields = ("username", "password", "password2", "email")
+        fields = ("username", "password", "password2", "email", "phone", "age", "dob")
         extra_kwargs = {"email": {"required": False}}
 
     def validate(self, data):
@@ -136,14 +139,43 @@ class RegisterSerializer(serializers.ModelSerializer):
         username = data.get("username")
         if User.objects.filter(username=username).exists():
             raise serializers.ValidationError({"username": "A user with that username already exists."})
+        
+        # Phone validation: 10 digits and numeric
+        phone = data.get("phone")
+        if not phone.isdigit() or len(phone) != 10:
+            raise serializers.ValidationError({"phone": "Phone number must be exactly 10 digits and contain only numbers."})
+
+        # Age validation: max 99
+        age = data.get("age")
+        if age > 99:
+            raise serializers.ValidationError({"age": "Age cannot be greater than 99."})
+        if age < 0:
+            raise serializers.ValidationError({"age": "Age cannot be negative."})
+
+        # DOB validation: must be in the past
+        from django.utils import timezone
+        dob = data.get("dob")
+        if dob >= timezone.now().date():
+            raise serializers.ValidationError({"dob": "Date of birth must be in the past."})
+
         return data
 
     def create(self, validated_data):
         validated_data.pop("password2", None)
+        phone = validated_data.pop("phone")
+        age = validated_data.pop("age")
+        dob = validated_data.pop("dob")
         password = validated_data.pop("password")
-        user = User(**validated_data)
-        user.set_password(password)
-        user.save()
+        
+        user = User.objects.create_user(
+            username=validated_data.get("username"),
+            email=validated_data.get("email", ""),
+            password=password
+        )
+        
+        # Create UserProfile
+        _models.UserProfile.objects.create(user=user, phone=phone, age=age, dob=dob)
+        
         return user
 
 

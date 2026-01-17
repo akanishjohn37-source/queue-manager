@@ -46,10 +46,10 @@ export async function loginUser(username, password) {
   return data;
 }
 
-export async function registerUser(username, password, password2) {
+export async function registerUser(username, password, password2, phone, age, dob) {
   const data = await request("/register/", {
     method: "POST",
-    body: JSON.stringify({ username, password, password2 }),
+    body: JSON.stringify({ username, password, password2, phone, age, dob }),
     auth: false,
   });
   if (data?.token) {

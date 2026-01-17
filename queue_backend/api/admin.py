@@ -1,6 +1,6 @@
 # queue_backend/api/admin.py
 from django.contrib import admin
-from .models import Service, Token, AuditLog, Provider
+from .models import Service, Token, AuditLog, Provider, UserProfile, ServiceStaff
 
 @admin.register(Provider)
 class ProviderAdmin(admin.ModelAdmin):
@@ -28,3 +28,14 @@ class AuditLogAdmin(admin.ModelAdmin):
     list_display = ("id", "action", "user", "timestamp")
     readonly_fields = ("timestamp",)
     search_fields = ("action", "details", "user__username")
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ("user", "phone", "age", "dob")
+    search_fields = ("user__username", "phone")
+
+@admin.register(ServiceStaff)
+class ServiceStaffAdmin(admin.ModelAdmin):
+    list_display = ("user", "service", "created_at")
+    list_filter = ("service",)
+    search_fields = ("user__username", "service__name")
