@@ -221,8 +221,10 @@ class ServiceStaffSerializer(serializers.ModelSerializer):
     # Retrieve nested data for display
     user_name = serializers.ReadOnlyField(source='user.username')
     service_name = serializers.ReadOnlyField(source='service.name')
+    provider_name = serializers.ReadOnlyField(source='service.provider.name')
+    provider_location = serializers.ReadOnlyField(source='service.provider.location')
 
     class Meta:
         model = _models.ServiceStaff
-        fields = ['id', 'user', 'user_name', 'service', 'service_name', 'created_at']
+        fields = ['id', 'user', 'user_name', 'service', 'service_name', 'provider_name', 'provider_location', 'created_at']
         read_only_fields = ['created_at']

@@ -136,12 +136,22 @@ class TokenViewSet(viewsets.ModelViewSet):
 
         # find last token number for service TODAY
         today = timezone.now().date()
+        
+        # appointment_date handling
+        appt_date = serializer.validated_data.get("appointment_date")
+        if not appt_date:
+            appt_date = today
+
+        # find last token for service on the requested date
         last_token = (
-            QueueToken.objects.filter(service=service, issued_at__date=today).order_by("-token_number").first()
+            QueueToken.objects.filter(service=service, appointment_date=appt_date).order_by("-token_number").first()
         )
+        # Fallback for legacy data: if no tokens found by date, and date is today, check issued_at?
+        # For now, let's assume we are moving to appointment_date strictly.
+        
         next_number = last_token.token_number + 1 if last_token else 1
 
-        serializer.save(user=user, token_number=next_number, status="waiting")
+        serializer.save(user=user, token_number=next_number, status="waiting", appointment_date=appt_date)
 
 
 # -----------------------
@@ -162,9 +172,10 @@ class TokensByServiceView(APIView):
         if QueueToken is None:
             return Response({"detail": "Token model missing"}, status=500)
 
-        # Filter by TODAY only
+        # Filter by TODAY only (based on appointment_date)
         today = timezone.now().date()
-        tokens = QueueToken.objects.filter(service_id=service_id, issued_at__date=today).order_by("token_number")
+        # We look for tokens scheduled for TODAY
+        tokens = QueueToken.objects.filter(service_id=service_id, appointment_date=today).order_by("token_number")
         serializer = TokenSerializer(tokens, many=True)
         return Response(serializer.data)
 
@@ -275,3 +286,55 @@ class ServiceStaffViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(profile)
             return Response(serializer.data)
         return super().list(request, *args, **kwargs)
+
+class CancelAllTokensView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .models import Notification, Token as QueueToken # ensuring imports locally
+        
+        service_id = request.data.get("service")
+        remarks = request.data.get("remarks")
+        
+        if not service_id:
+            return Response({"detail": "Service ID required"}, status=400)
+            
+        today = timezone.now().date()
+        
+        tokens_to_cancel = QueueToken.objects.filter(
+            service_id=service_id, 
+            appointment_date=today,
+            status='waiting'
+        )
+        
+        count = tokens_to_cancel.count()
+        
+        for token in tokens_to_cancel:
+            if token.user:
+                Notification.objects.create(
+                    user=token.user,
+                    message=f"Your appointment #{token.token_number} has been cancelled. Reason: {remarks}"
+                )
+        
+        tokens_to_cancel.update(status='cancelled', remarks=remarks)
+        
+        return Response({"detail": f"Cancelled {count} tokens", "count": count})
+
+class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = None # We will create a simple inline serializer or just return values
+
+    def get_queryset(self):
+        from .models import Notification
+        return Notification.objects.filter(user=self.request.user).order_by('-timestamp')
+    
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        # manual serialization
+        data = [{
+            "id": n.id,
+            "message": n.message,
+            "is_read": n.is_read,
+            "timestamp": n.timestamp
+        } for n in queryset]
+        return Response(data)

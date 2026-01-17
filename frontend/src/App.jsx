@@ -59,13 +59,13 @@ function NavBar() {
           <div className="hidden md:flex items-center gap-8">
             {isLoggedIn ? (
               <>
-                {!isProvider && (
+                {!isProvider && !isStaff && (
                   <>
                     <NavLink to="/user">BOOK TOKEN</NavLink>
                     <NavLink to="/notifications">LIVE STATUS</NavLink>
                   </>
                 )}
-                {(isStaff || isProvider) && (
+                {isProvider && (
                   <NavLink to="/provider">PROVIDER</NavLink>
                 )}
                 {isStaff && (
@@ -102,13 +102,13 @@ function NavBar() {
         <div className="flex flex-col gap-8 items-center text-center">
           {isLoggedIn ? (
             <>
-              {!isProvider && (
+              {!isProvider && !isStaff && (
                 <>
                   <NavLink to="/user" onClick={() => setIsMenuOpen(false)}>BOOK TOKEN</NavLink>
                   <NavLink to="/notifications" onClick={() => setIsMenuOpen(false)}>LIVE STATUS</NavLink>
                 </>
               )}
-              {(isStaff || isProvider) && (
+              {isProvider && (
                 <NavLink to="/provider" onClick={() => setIsMenuOpen(false)}>PROVIDER</NavLink>
               )}
               {isStaff && (

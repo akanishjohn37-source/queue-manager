@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { fetchProviders, fetchServices, fetchTokensByService, updateTokenStatus } from "../api";
-import { Users, Clock, CheckCircle, XCircle, Play, SkipForward, AlertCircle, LayoutDashboard, Building2, Zap, ArrowRight, BellRing } from "lucide-react";
+import { fetchProviders, fetchServices, fetchTokensByService, updateTokenStatus, cancelAllTokens } from "../api";
+import { Users, Clock, CheckCircle, XCircle, Play, SkipForward, AlertCircle, LayoutDashboard, Building2, Zap, ArrowRight, BellRing, FileText, X, Download, Ban } from "lucide-react";
 import HospitalDirectory from "../components/HospitalDirectory";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
 export default function ProviderDashboard() {
     const [myProviders, setMyProviders] = useState([]);
@@ -10,6 +12,9 @@ export default function ProviderDashboard() {
     const [tokens, setTokens] = useState([]);
     const [loading, setLoading] = useState(true);
     const [viewMode, setViewMode] = useState("manage");
+    const [showReport, setShowReport] = useState(false);
+    const [showCancelModal, setShowCancelModal] = useState(false);
+    const [cancelReason, setCancelReason] = useState("");
 
     const userId = parseInt(localStorage.getItem("user_id"));
 
@@ -19,7 +24,12 @@ export default function ProviderDashboard() {
         import("../api").then(({ fetchMyService }) => {
             fetchMyService().then(assignment => {
                 if (assignment && assignment.service) {
-                    setSelectedService({ id: assignment.service, name: assignment.service_name });
+                    setSelectedService({
+                        id: assignment.service,
+                        name: assignment.service_name,
+                        providerName: assignment.provider_name,
+                        providerLocation: assignment.provider_location
+                    });
                     setLoading(false);
                 } else {
                     fetchProviders().then((allProviders) => {
@@ -58,8 +68,35 @@ export default function ProviderDashboard() {
         }
     };
 
+    const handleEmergencyCancel = async () => {
+        if (!cancelReason) return alert("Please provide a reason.");
+        if (!window.confirm("Are you sure you want to cancel ALL waiting tokens? This action cannot be undone.")) return;
+
+        try {
+            await cancelAllTokens(selectedService.id, cancelReason);
+            setShowCancelModal(false);
+            setCancelReason("");
+            // refresh
+            const updated = await fetchTokensByService(selectedService.id);
+            setTokens(updated);
+            alert("All waiting tokens have been cancelled.");
+        } catch (e) {
+            console.error(e);
+            alert("Failed to cancel tokens.");
+        }
+    };
+
     const waitingTokens = tokens.filter(t => t.status === "waiting");
     const currentToken = tokens.find(t => t.status === "calling" || t.status === "serving");
+
+    // Report Data
+    const processedTokens = tokens.filter(t => ['completed', 'skipped', 'cancelled'].includes(t.status));
+    const stats = {
+        completed: processedTokens.filter(t => t.status === 'completed').length,
+        skipped: processedTokens.filter(t => t.status === 'skipped').length,
+        cancelled: processedTokens.filter(t => t.status === 'cancelled').length,
+        total: processedTokens.length
+    };
 
     if (!userId) return (
         <div className="flex flex-col items-center justify-center min-h-[70vh] text-slate-400 container mx-auto px-6">
@@ -70,6 +107,59 @@ export default function ProviderDashboard() {
             <p className="text-lg font-medium">Internal access only. Please authenticate as a service provider.</p>
         </div>
     );
+
+    const handleDownloadPDF = () => {
+        const doc = new jsPDF();
+
+        // Header
+        doc.setFontSize(22);
+        doc.setTextColor(30, 41, 59); // Slate 800
+        doc.text("Daily Session Report", 14, 20);
+
+        doc.setFontSize(10);
+        doc.setTextColor(100, 116, 139); // Slate 500
+        doc.text(`Date: ${new Date().toDateString()}`, 14, 28);
+
+        if (selectedService) {
+            doc.text(`Provider: ${selectedService.providerName} | Service: ${selectedService.name}`, 14, 34);
+        }
+
+        // Stats
+        doc.setFillColor(241, 245, 249); // Slate 100
+        doc.roundedRect(14, 40, 180, 20, 3, 3, "F");
+
+        doc.setFontSize(12);
+        doc.setTextColor(30, 41, 59);
+        doc.text(`Total: ${stats.total}`, 20, 53);
+        doc.text(`Completed: ${stats.completed}`, 70, 53);
+        doc.text(`Skipped: ${stats.skipped}`, 120, 53);
+        doc.text(`Cancelled: ${stats.cancelled}`, 160, 53);
+
+        // Table
+        const tableColumn = ["Time", "Token", "Patient Name", "Status"];
+        const tableRows = [];
+
+        processedTokens.forEach(token => {
+            const tokenData = [
+                token.appointment_time || "-",
+                `#${token.token_number}`,
+                token.visitor_name || "Guest",
+                token.status.toUpperCase()
+            ];
+            tableRows.push(tokenData);
+        });
+
+        autoTable(doc, {
+            head: [tableColumn],
+            body: tableRows,
+            startY: 70,
+            headStyles: { fillColor: [37, 99, 235], textColor: 255, fontStyle: 'bold' },
+            styles: { fontSize: 10, cellPadding: 4 },
+            alternateRowStyles: { fillColor: [248, 250, 252] }
+        });
+
+        doc.save(`session_report_${new Date().toISOString().split('T')[0]}.pdf`);
+    };
 
     if (loading) return (
         <div className="flex justify-center items-center min-h-[70vh]">
@@ -83,7 +173,141 @@ export default function ProviderDashboard() {
     );
 
     return (
-        <div className="max-w-7xl mx-auto px-6 py-12 space-y-12 animate-fade-in">
+        <div className="max-w-7xl mx-auto px-6 py-12 space-y-12 animate-fade-in relative">
+            {/* Report Modal */}
+            {showReport && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-6">
+                    <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden animate-scale-in flex flex-col max-h-[90vh]">
+                        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <div className="flex items-center gap-4">
+                                <div className="bg-blue-600 p-3 rounded-xl text-white shadow-lg shadow-blue-500/30">
+                                    <FileText size={24} />
+                                </div>
+                                <div>
+                                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">Daily Session Report</h2>
+                                    <p className="text-slate-500 font-bold text-xs uppercase tracking-widest">{new Date().toDateString()}</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowReport(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-400 hover:text-slate-700">
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-4 p-8 bg-white border-b border-slate-100">
+                            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 text-center">
+                                <div className="text-3xl font-black text-slate-900">{stats.total}</div>
+                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Total Processed</div>
+                            </div>
+                            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 text-center">
+                                <div className="text-3xl font-black text-emerald-600">{stats.completed}</div>
+                                <div className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mt-1">Completed</div>
+                            </div>
+                            <div className="p-4 rounded-2xl bg-amber-50 border border-amber-100 text-center">
+                                <div className="text-3xl font-black text-amber-600">{stats.skipped}</div>
+                                <div className="text-[10px] font-bold text-amber-400 uppercase tracking-widest mt-1">Skipped</div>
+                            </div>
+                            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-100 text-center">
+                                <div className="text-3xl font-black text-rose-600">{stats.cancelled}</div>
+                                <div className="text-[10px] font-bold text-rose-400 uppercase tracking-widest mt-1">Cancelled</div>
+                            </div>
+                        </div>
+
+                        <div className="flex-grow overflow-y-auto p-8 custom-scrollbar bg-slate-50/50">
+                            {processedTokens.length === 0 ? (
+                                <div className="text-center py-12 opacity-50 font-bold text-slate-400">No records found for today's session.</div>
+                            ) : (
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-200">
+                                            <th className="py-4 px-4">Time</th>
+                                            <th className="py-4 px-4">Token</th>
+                                            <th className="py-4 px-4">Patient Name</th>
+                                            <th className="py-4 px-4 text-right">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-200">
+                                        {processedTokens.map(t => (
+                                            <tr key={t.id} className="font-bold text-slate-600 text-sm hover:bg-white transition-colors">
+                                                <td className="py-4 px-4 font-mono text-xs">{t.appointment_time || "-"}</td>
+                                                <td className="py-4 px-4 text-blue-600">#{t.token_number}</td>
+                                                <td className="py-4 px-4">{t.visitor_name || "Guest"}</td>
+                                                <td className="py-4 px-4 text-right">
+                                                    <span className={`inline-flex px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest
+                                                        ${t.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
+                                                            t.status === 'skipped' ? 'bg-amber-100 text-amber-700' :
+                                                                'bg-rose-100 text-rose-700'}`}>
+                                                        {t.status}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+
+                        <div className="p-6 border-t border-slate-100 bg-white flex justify-between items-center">
+                            <button
+                                onClick={handleDownloadPDF}
+                                className="px-6 py-3 bg-blue-50 text-blue-600 font-bold rounded-xl hover:bg-blue-100 transition-colors flex items-center gap-2"
+                            >
+                                <Download size={18} />
+                                <span>Download PDF</span>
+                            </button>
+                            <button onClick={() => setShowReport(false)} className="px-8 py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 transition-colors">
+                                Close Report
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Cancel Modal */}
+            {showCancelModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-6">
+                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-scale-in flex flex-col">
+                        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-rose-50">
+                            <div className="flex items-center gap-4">
+                                <div className="bg-rose-600 p-3 rounded-xl text-white shadow-lg shadow-rose-500/30">
+                                    <Ban size={24} />
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-black text-slate-900 tracking-tight">Emergency Stop</h2>
+                                    <p className="text-rose-600 font-bold text-xs uppercase tracking-widest">Cancel All Waiting</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowCancelModal(false)} className="p-2 hover:bg-rose-100 rounded-full transition-colors text-rose-400 hover:text-rose-700">
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <div className="p-8 space-y-6">
+                            <p className="text-slate-600 font-medium text-sm">
+                                This will cancel all <strong>{waitingTokens.length}</strong> waiting tokens. Please specify a reason for the notifications (e.g., "Doctor Emergency", "Session Limit Reached").
+                            </p>
+                            <div className="space-y-2">
+                                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">cancellation Reason</label>
+                                <textarea
+                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500/50 resize-none h-32"
+                                    placeholder="Enter reason here..."
+                                    value={cancelReason}
+                                    onChange={(e) => setCancelReason(e.target.value)}
+                                ></textarea>
+                            </div>
+                        </div>
+
+                        <div className="p-6 border-t border-slate-100 bg-white flex justify-end gap-4">
+                            <button onClick={() => setShowCancelModal(false)} className="px-6 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">
+                                Abort
+                            </button>
+                            <button onClick={handleEmergencyCancel} className="px-6 py-3 bg-rose-600 text-white font-bold rounded-xl hover:bg-rose-700 transition-colors shadow-lg shadow-rose-500/30">
+                                Confirm Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="relative overflow-hidden bg-slate-900 premium-card p-10 flex flex-col md:flex-row items-center justify-between gap-8 border-none ring-1 ring-white/10">
                 <div className="absolute top-0 right-0 p-10 opacity-10 pointer-events-none">
                     <LayoutDashboard size={200} className="text-white" />
@@ -95,7 +319,35 @@ export default function ProviderDashboard() {
                         Operation Center
                     </div>
                     <h1 className="text-4xl font-black text-white tracking-tighter">Clinical Dashboard</h1>
-                    <p className="text-slate-400 font-medium text-lg">Managing: <span className="text-blue-400">{selectedService?.name || "System Base"}</span></p>
+                    <p className="text-slate-400 font-medium text-lg">
+                        {selectedService ? (
+                            <>
+                                <span className="text-white font-bold">{selectedService.providerName}</span>
+                                {selectedService.providerLocation && <span className="text-slate-500">, {selectedService.providerLocation}</span>}
+                                <span className="mx-2 text-slate-600">|</span>
+                                <span className="text-blue-400">{selectedService.name}</span>
+                            </>
+                        ) : (
+                            "System Base"
+                        )}
+                    </p>
+                </div>
+
+                <div className="relative z-10 flex gap-4">
+                    <button
+                        onClick={() => setShowCancelModal(true)}
+                        className="px-6 py-4 bg-rose-500/20 hover:bg-rose-500/30 text-rose-100 backdrop-blur-md rounded-2xl font-bold transition-all flex items-center gap-3 border border-rose-500/20 shadow-xl"
+                    >
+                        <Ban size={20} />
+                        <span>End Session</span>
+                    </button>
+                    <button
+                        onClick={() => setShowReport(true)}
+                        className="px-6 py-4 bg-white/10 hover:bg-white/20 text-white backdrop-blur-md rounded-2xl font-bold transition-all flex items-center gap-3 border border-white/10 shadow-xl"
+                    >
+                        <FileText size={20} />
+                        <span>Daily Report</span>
+                    </button>
                 </div>
             </div>
 
@@ -159,10 +411,15 @@ export default function ProviderDashboard() {
                                                 {waitingTokens.length > 0 && (
                                                     <button
                                                         onClick={() => handleStatusUpdate(waitingTokens[0].id, "calling")}
-                                                        className="btn-primary mt-8 scale-110 !px-12 flex items-center gap-3 mx-auto"
+                                                        className="btn-primary mt-8 scale-110 !px-12 flex flex-col items-center gap-1 mx-auto py-4"
                                                     >
-                                                        <Play size={18} fill="currentColor" />
-                                                        Call Token #{waitingTokens[0].token_number}
+                                                        <div className="flex items-center gap-2">
+                                                            <Play size={18} fill="currentColor" />
+                                                            <span>Call Token #{waitingTokens[0].token_number}</span>
+                                                        </div>
+                                                        <div className="text-xs font-normal opacity-80">
+                                                            {waitingTokens[0].visitor_name || "Guest"}
+                                                        </div>
                                                     </button>
                                                 )}
                                             </div>
@@ -297,14 +554,22 @@ export default function ProviderDashboard() {
                                 <Zap className="text-blue-500" size={18} />
                                 <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Operation Metrics</span>
                             </div>
-                            <div className="grid grid-cols-2 gap-6">
+                            <div className="grid grid-cols-2 gap-y-8 gap-x-4">
                                 <div className="space-y-1">
-                                    <div className="text-3xl font-black tracking-tighter">{tokens.filter(t => t.status === 'completed').length}</div>
+                                    <div className="text-3xl font-black tracking-tighter text-emerald-400">{stats.completed}</div>
                                     <div className="text-[9px] font-bold text-slate-500 uppercase">Resolved</div>
                                 </div>
                                 <div className="space-y-1">
-                                    <div className="text-3xl font-black tracking-tighter">{waitingTokens.length}</div>
+                                    <div className="text-3xl font-black tracking-tighter text-white">{waitingTokens.length}</div>
                                     <div className="text-[9px] font-bold text-slate-500 uppercase">In-Queue</div>
+                                </div>
+                                <div className="space-y-1">
+                                    <div className="text-3xl font-black tracking-tighter text-amber-500">{stats.skipped}</div>
+                                    <div className="text-[9px] font-bold text-slate-500 uppercase">Skipped</div>
+                                </div>
+                                <div className="space-y-1">
+                                    <div className="text-3xl font-black tracking-tighter text-rose-500">{stats.cancelled}</div>
+                                    <div className="text-[9px] font-bold text-slate-500 uppercase">Cancelled</div>
                                 </div>
                             </div>
                             <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden mt-6">

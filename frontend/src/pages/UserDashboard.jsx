@@ -1,6 +1,76 @@
 import React, { useEffect, useState, useRef } from "react";
-import { fetchProviders, fetchServices, fetchTokensByService, createToken, fetchMyTokens } from "../api";
-import { Building2, Stethoscope, User, Ticket, Clock, CheckCircle, AlertCircle, Calendar, ChevronRight, Search, Zap, BellRing } from "lucide-react";
+import { fetchProviders, fetchServices, fetchTokensByService, createToken, fetchMyTokens, apiDelete, fetchNotifications } from "../api";
+import { Building2, Stethoscope, User, Ticket, Clock, CheckCircle, AlertCircle, Calendar, ChevronRight, Search, Zap, BellRing, Trash2 } from "lucide-react";
+
+// --- Components ---
+const PremiumSelect = ({ label, options, value, onChange, icon: Icon, disabled, placeholder }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find(o => String(o.value) === String(value));
+
+  return (
+    <div className="group space-y-3" ref={containerRef}>
+      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest ml-1">{label}</label>
+      <div className="relative">
+        <div
+          onClick={() => !disabled && setIsOpen(!isOpen)}
+          className={`
+            relative flex items-center justify-between w-full px-4 py-4 
+            bg-white border rounded-xl transition-all duration-200 cursor-pointer
+            ${disabled ? 'bg-slate-50 border-slate-200 cursor-not-allowed opacity-60' : 'border-slate-200 hover:border-blue-400 hover:shadow-md'}
+            ${isOpen ? 'ring-2 ring-blue-500/20 border-blue-500' : ''}
+          `}
+        >
+          <div className="flex items-center gap-4">
+            {Icon && <Icon className={`transition-colors ${isOpen || value ? 'text-blue-600' : 'text-slate-400'}`} size={18} />}
+            <span className={`font-bold ${value ? 'text-slate-900' : 'text-slate-400'}`}>
+              {selectedOption ? selectedOption.label : placeholder}
+            </span>
+          </div>
+          <ChevronRight size={16} className={`text-slate-400 transition-transform duration-300 ${isOpen ? 'rotate-[270deg]' : 'rotate-90'}`} />
+        </div>
+
+        {isOpen && !disabled && (
+          <div className="absolute top-full left-0 z-50 w-full mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl animate-scale-in overflow-hidden">
+            <div className="max-h-60 overflow-y-auto custom-scrollbar p-1.5">
+              {options.length > 0 ? (
+                options.map((option) => (
+                  <div
+                    key={option.value}
+                    onClick={() => {
+                      onChange(option.value);
+                      setIsOpen(false);
+                    }}
+                    className={`
+                      flex items-center justify-between px-4 py-3 rounded-lg cursor-pointer transition-colors font-medium text-sm
+                      ${String(value) === String(option.value) ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'}
+                    `}
+                  >
+                    <span>{option.label}</span>
+                    {String(value) === String(option.value) && <CheckCircle size={14} className="text-blue-600" />}
+                  </div>
+                ))
+              ) : (
+                <div className="px-4 py-3 text-sm text-slate-400 italic">No options available</div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export default function UserDashboard() {
   const [viewMode, setViewMode] = useState("book"); // "book" or "directory"
@@ -9,16 +79,53 @@ export default function UserDashboard() {
 
   const [selectedProvider, setSelectedProvider] = useState("");
   const [selectedService, setSelectedService] = useState("");
+  const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
 
   const [queue, setQueue] = useState([]);
   const [message, setMessage] = useState("");
   const [myTokens, setMyTokens] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const today = new Date();
+  today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+  const todayStr = today.toISOString().split('T')[0];
+
+  useEffect(() => {
+    const loadNotifs = async () => {
+      try {
+        const data = await fetchNotifications();
+        setNotifications(Array.isArray(data) ? data : []);
+      } catch { }
+    };
+    loadNotifs();
+    const interval = setInterval(loadNotifs, 10000); // Poll every 10s
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadMyTokens = async () => {
+    try {
+      const data = await fetchMyTokens();
+      setMyTokens(Array.isArray(data) ? data : []);
+    } catch { }
+  };
+
+  const handleDeleteToken = async (id) => {
+    if (!window.confirm("Are you sure you want to cancel this booking?")) return;
+    try {
+      await apiDelete(`/tokens/${id}/`);
+      loadMyTokens();
+      setMessage("Booking cancelled successfully");
+    } catch (err) {
+      alert("Failed to cancel booking");
+    }
+  };
 
   // Load Providers
   useEffect(() => {
     fetchProviders().then(setProviders).catch(() => setMessage("Failed to load clinical network"));
-    fetchMyTokens().then(setMyTokens).catch(console.error);
+    loadMyTokens();
   }, []);
 
   // Load Services when Provider changes
@@ -51,17 +158,25 @@ export default function UserDashboard() {
 
   const handleCreateToken = async () => {
     const name = localStorage.getItem("username") || "User";
-    if (!selectedService || !selectedTime) {
-      setMessage("Please select a clinical specialty and time window.");
+
+    // Validation: Pop message if steps are missed
+    if (!selectedService || !selectedTime || !selectedDate) {
+      setMessage("Please complete all steps: Clinical Institution, Service, appointment Date, and Time.");
+      // return early to prevent execution
       return;
     }
+
     try {
-      const token = await createToken(selectedService, name, selectedTime);
-      setMessage(`Confirmed! Your unique entry token is #${token.token_number} for the ${selectedTime} window.`);
+      const token = await createToken(selectedService, name, selectedTime, selectedDate);
+      setMessage(`Confirmed! Your unique entry token is #${token.token_number} for ${selectedDate} at ${selectedTime}.`);
       setMyTokens(prev => [token, ...prev]);
+
+      // Reset sensitive fields but maybe keep provider?
       setSelectedTime("");
+      // setSelectedDate(""); // Keep date for convenience? Or reset? Let's keep it.
       loadQueue();
     } catch (err) {
+      console.error(err);
       setMessage("System error during token generation");
     }
   };
@@ -77,6 +192,39 @@ export default function UserDashboard() {
           </div>
           <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">Client Hub</h1>
           <p className="text-slate-500 font-medium text-lg">Securely manage clinical scheduling and live status monitoring.</p>
+        </div>
+
+        <div className="relative z-20">
+          <div
+            onClick={() => setShowNotifications(!showNotifications)}
+            className="relative cursor-pointer p-4 bg-slate-50 rounded-2xl hover:bg-slate-100 transition-colors border border-slate-100 shadow-sm"
+          >
+            <BellRing size={24} className={notifications.length > 0 ? "text-blue-600" : "text-slate-400"} />
+            {notifications.some(n => !n.is_read) && (
+              <span className="absolute top-3 right-3 w-3 h-3 bg-rose-500 border-2 border-white rounded-full animate-pulse"></span>
+            )}
+          </div>
+
+          {showNotifications && (
+            <div className="absolute top-full right-0 mt-4 w-96 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-scale-in origin-top-right">
+              <div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                <span className="font-bold text-slate-700">Notifications</span>
+                <span className="text-xs font-bold bg-blue-100 text-blue-600 px-2 py-1 rounded-lg">{notifications.length}</span>
+              </div>
+              <div className="max-h-80 overflow-y-auto custom-scrollbar">
+                {notifications.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 text-sm italic">No new notifications</div>
+                ) : (
+                  notifications.map(n => (
+                    <div key={n.id} className="p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors">
+                      <p className="text-sm font-bold text-slate-700 leading-snug">{n.message}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">{new Date(n.timestamp).toLocaleString()}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -101,77 +249,83 @@ export default function UserDashboard() {
                 Scheduling Matrix
               </h2>
               <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                Step {!selectedProvider ? 1 : !selectedService ? 2 : 3} / 3
+                Step {!selectedProvider ? 0 : !selectedService ? 1 : (!selectedDate || !selectedTime) ? 2 : 3} / 3
               </span>
             </div>
 
             <div className="space-y-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-3">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest ml-1">Clinical Institution</label>
-                  <div className="relative group">
-                    <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 pointer-events-none" size={18} />
-                    <select
-                      className="premium-input !pl-12 !py-4 appearance-none font-bold"
-                      value={selectedProvider}
-                      onChange={(e) => setSelectedProvider(e.target.value)}
-                    >
-                      <option value="">Select Hospital</option>
-                      {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                  </div>
-                </div>
+                <PremiumSelect
+                  label="Clinical Institution"
+                  options={providers.map(p => ({ value: p.id, label: p.name }))}
+                  value={selectedProvider}
+                  onChange={setSelectedProvider}
+                  icon={Building2}
+                  placeholder="Select Hospital"
+                />
 
-                <div className="space-y-3">
-                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest ml-1">Specialized Service</label>
-                  <div className="relative group">
-                    <Stethoscope className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 pointer-events-none" size={18} />
-                    <select
-                      className="premium-input !pl-12 !py-4 appearance-none font-bold disabled:bg-slate-50"
-                      value={selectedService}
-                      onChange={(e) => setSelectedService(e.target.value)}
-                      disabled={!selectedProvider}
-                    >
-                      <option value="">Choose Department</option>
-                      {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </div>
-                </div>
+                <PremiumSelect
+                  label="Specialized Service"
+                  options={services.map(s => ({ value: s.id, label: s.name }))}
+                  value={selectedService}
+                  onChange={setSelectedService}
+                  icon={Stethoscope}
+                  disabled={!selectedProvider}
+                  placeholder="Choose Department"
+                />
               </div>
 
               <div className="space-y-4">
-                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                  <Calendar size={14} />
-                  Preferred Operation Window
-                </label>
-                <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
-                  {["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
-                    "12:00", "12:30", "13:00", "13:30", "14:00"].map((time) => {
-                      const isSelected = selectedTime === time;
-                      return (
-                        <button
-                          key={time}
-                          onClick={() => setSelectedTime(time)}
-                          className={`py-3 px-1 rounded-xl text-[13px] font-bold transition-all duration-300 border-2 ${isSelected
-                            ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105"
-                            : "bg-white border-slate-100 text-slate-700 hover:border-blue-200 hover:bg-blue-50"
-                            }`}
-                        >
-                          {time}
-                        </button>
-                      );
-                    })}
-                </div>
-              </div>
+                <div className="flex flex-col md:flex-row gap-6">
+                  <div className="w-full md:w-1/3 group space-y-3">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest ml-1">Date</label>
+                    <div className="relative">
+                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 pointer-events-none" size={18} />
+                      <input
+                        type="date"
+                        className="premium-input !pl-12 !py-4 font-bold"
+                        min={todayStr}
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                      />
+                    </div>
+                  </div>
 
-              <button
-                onClick={handleCreateToken}
-                className="btn-primary w-full !py-5 text-lg flex items-center justify-center gap-3 group"
-              >
-                <Zap size={20} className="group-hover:animate-pulse" />
-                <span>Execute Booking Request</span>
-                <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
-              </button>
+                  <div className="flex-1 space-y-3">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                      <Clock size={14} />
+                      Preferred Operation Window
+                    </label>
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                      {["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
+                        "12:00", "12:30", "13:00", "13:30", "14:00"].map((time) => {
+                          const isSelected = selectedTime === time;
+                          return (
+                            <button
+                              key={time}
+                              onClick={() => setSelectedTime(time)}
+                              className={`py-3 px-1 rounded-xl text-[13px] font-bold transition-all duration-300 border-2 ${isSelected
+                                ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105"
+                                : "bg-white border-slate-100 text-slate-700 hover:border-blue-200 hover:bg-blue-50"
+                                }`}
+                            >
+                              {time}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleCreateToken}
+                  className="btn-primary w-full !py-5 text-lg flex items-center justify-center gap-3 group"
+                >
+                  <Zap size={20} className="group-hover:animate-pulse" />
+                  <span>Execute Booking Request</span>
+                  <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -255,6 +409,16 @@ export default function UserDashboard() {
                 <div className="space-y-6">
                   {myTokens.map((t) => (
                     <div key={t.id} className="group relative p-6 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-500">
+                      <div className="absolute top-4 right-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => { e.preventDefault(); handleDeleteToken(t.id); }}
+                          className="p-2 bg-white text-rose-500 hover:bg-rose-50 border border-slate-100 rounded-xl shadow-sm hover:shadow-md transition-all"
+                          title="Cancel Booking"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+
                       <div className="flex justify-between items-start mb-4">
                         <div className="space-y-1">
                           <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Entry Ref</span>
@@ -283,6 +447,10 @@ export default function UserDashboard() {
                         <div className="flex items-center gap-2 text-slate-500 shrink-0">
                           <User size={16} />
                           <span className="text-xs font-bold truncate max-w-[80px]">{t.visitor_name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-slate-500">
+                          <Calendar size={16} />
+                          <span className="text-xs font-bold">{t.appointment_date || "Today"}</span>
                         </div>
                         <div className="flex items-center gap-2 text-slate-500">
                           <Clock size={16} />

@@ -82,9 +82,10 @@ export async function updateTokenStatus(id, status) {
   });
 }
 
-export const createToken = async (serviceId, visitorName, appointmentTime) => {
+export const createToken = async (serviceId, visitorName, appointmentTime, appointmentDate) => {
   const data = { service: serviceId, visitor_name: visitorName };
   if (appointmentTime) data.appointment_time = appointmentTime;
+  if (appointmentDate) data.appointment_date = appointmentDate;
   return apiPost("/tokens/", data);
 };
 
@@ -92,6 +93,12 @@ export async function apiPost(path, body) {
   return request(path, {
     method: "POST",
     body: JSON.stringify(body),
+  });
+}
+
+export async function apiDelete(path) {
+  return request(path, {
+    method: "DELETE",
   });
 }
 
@@ -114,10 +121,24 @@ export const assignStaff = async (staffId, serviceId) => {
   });
 };
 
+export const fetchAllAssignments = async () => {
+  return request("/service-staff/");
+};
+
 export const fetchMyService = async () => {
   return request("/service-staff/?me=true");
 };
 
 export const fetchMyTokens = async () => {
   return request("/tokens/?user=me");
+};
+export const cancelAllTokens = async (serviceId, remarks) => {
+  return request("/cancel-all-tokens/", {
+    method: "POST",
+    body: JSON.stringify({ service: serviceId, remarks })
+  });
+};
+
+export const fetchNotifications = async () => {
+  return request("/notifications/");
 };
