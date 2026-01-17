@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { fetchProviders, fetchServices, fetchTokensByService } from "../api";
-import { Monitor, Clock, Users, Activity, LayoutDashboard, Calendar, Search } from "lucide-react";
+import { Monitor, Clock, Users, Activity, LayoutDashboard, Calendar, Search, ChevronDown } from "lucide-react";
+import { Section } from "../components/QtracComponents";
 
 export default function NotificationPage() {
     const [providers, setProviders] = useState([]);
@@ -149,6 +150,14 @@ export default function NotificationPage() {
                                         </div>
                                         <div className="text-4xl md:text-6xl font-black text-blue-100 tracking-tight mt-10">
                                             {currentToken.visitor_name || "SYSTEM_USER"}
+                                        </div>
+                                        <div className="mt-8 space-y-2">
+                                            <div className="text-blue-200 font-black uppercase tracking-[0.2em]">
+                                                {currentToken.provider_name}
+                                            </div>
+                                            <div className="text-white/60 font-bold uppercase tracking-widest text-sm">
+                                                {currentToken.service_name}
+                                            </div>
                                         </div>
                                         <div className="mt-12 flex justify-center">
                                             <div className="px-6 py-2 bg-white/20 backdrop-blur-md rounded-full text-white text-[10px] font-black uppercase tracking-[0.3em] flex items-center gap-3">

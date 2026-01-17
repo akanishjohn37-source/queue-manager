@@ -117,3 +117,7 @@ export const assignStaff = async (staffId, serviceId) => {
 export const fetchMyService = async () => {
   return request("/service-staff/?me=true");
 };
+
+export const fetchMyTokens = async () => {
+  return request("/tokens/?user=me");
+};

@@ -5,7 +5,7 @@ from django.conf import settings
 class Provider(models.Model):
     name = models.CharField(max_length=150)
     location = models.CharField(max_length=255, blank=True, null=True)
-    working_hours = models.CharField(max_length=100, default="09:00 AM - 05:00 PM")
+    working_hours = models.CharField(max_length=100, default="09:00 AM - 02:00 PM")
     admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="managed_providers")
     
     def __str__(self):

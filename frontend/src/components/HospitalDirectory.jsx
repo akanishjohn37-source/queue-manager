@@ -48,7 +48,7 @@ export default function HospitalDirectory() {
                                     <td className="py-4 px-6 text-gray-600">{provider.location || "N/A"}</td>
                                     <td className="py-4 px-6 text-gray-600">
                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                            {provider.working_hours || "09:00 AM - 05:00 PM"}
+                                            {provider.working_hours || "09:00 AM - 02:00 PM"}
                                         </span>
                                     </td>
                                     <td className="py-4 px-6 text-gray-600">

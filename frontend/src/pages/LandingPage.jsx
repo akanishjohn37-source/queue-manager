@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { Section, Button, FeatureItem, AccordionItem } from '../components/QtracComponents';
 import { Link } from 'react-router-dom';
+import HospitalDirectory from '../components/HospitalDirectory';
 
 export default function LandingPage() {
     const [activeTab, setActiveTab] = useState('customer');
@@ -219,6 +220,17 @@ export default function LandingPage() {
                             />
                         ))}
                     </div>
+                </div>
+            </Section>
+
+            {/* Hospital Directory - Now on Landing Page */}
+            <Section className="bg-white border-t border-slate-100">
+                <div className="max-w-6xl mx-auto space-y-10">
+                    <div className="text-center space-y-4">
+                        <h2 className="text-4xl font-black text-slate-900 tracking-tighter">Clinical Network Directory</h2>
+                        <p className="text-slate-500 font-medium">Real-time status of our institutional partners and available departments.</p>
+                    </div>
+                    <HospitalDirectory />
                 </div>
             </Section>
 

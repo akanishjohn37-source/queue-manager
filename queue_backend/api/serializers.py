@@ -58,15 +58,25 @@ if TokenModel is None:
         visitor_name = serializers.CharField(allow_blank=True, required=False)
 
         service_name = serializers.SerializerMethodField()
+        provider_name = serializers.SerializerMethodField()
 
         def get_service_name(self, obj):
             # obj may be dict (fallback) or model instance
             if isinstance(obj, dict):
                 return obj.get("service_name") or obj.get("service")
             return getattr(obj, "service_name", getattr(obj, "service", None))
+
+        def get_provider_name(self, obj):
+            if isinstance(obj, dict):
+                return obj.get("provider_name")
+            svc = getattr(obj, "service", None)
+            if svc and getattr(svc, "provider", None):
+                return svc.provider.name
+            return None
 else:
     class TokenSerializer(serializers.ModelSerializer):
         service_name = serializers.SerializerMethodField(read_only=True)
+        provider_name = serializers.SerializerMethodField(read_only=True)
 
         class Meta:
             model = TokenModel
@@ -79,8 +89,8 @@ else:
                 # fallback minimal set
                 model_field_names = ["id", "token_number", "service", "status", "issued_at", "user", "visitor_name"]
 
-            # ensure service_name included and unique
-            fields = list(dict.fromkeys(model_field_names + ["service_name"]))
+            # ensure service_name and provider_name included and unique
+            fields = list(dict.fromkeys(model_field_names + ["service_name", "provider_name"]))
             extra_kwargs = {
                 "token_number": {"read_only": True},
                 # "status": {"read_only": True},  <-- removed to allow updates
@@ -99,6 +109,12 @@ else:
                 return name
             # else if service is integer id
             return getattr(svc, "id", None)
+
+        def get_provider_name(self, obj):
+            svc = getattr(obj, "service", None)
+            if svc and getattr(svc, "provider", None):
+                return svc.provider.name
+            return None
 
 
 # -------------------------

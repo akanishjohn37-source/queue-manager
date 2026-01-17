@@ -105,11 +105,24 @@ class TokenViewSet(viewsets.ModelViewSet):
         # fallback empty queryset to avoid import errors; will raise runtime errors on use
         queryset = []
         serializer_class = TokenSerializer
+        serializer_class = TokenSerializer
     else:
-        queryset = QueueToken.objects.all().order_by("-id")  # ordering for admin lists
+        queryset = QueueToken.objects.all().order_by("-id")
         serializer_class = TokenSerializer
 
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if QueueToken is None:
+            return []
+        
+        queryset = QueueToken.objects.all().order_by("-id")
+        
+        # Filter for current user if requested
+        if self.request.query_params.get("user") == "me" and self.request.user.is_authenticated:
+            return queryset.filter(user=self.request.user)
+            
+        return queryset
 
     def perform_create(self, serializer):
         """

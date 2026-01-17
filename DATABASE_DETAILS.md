@@ -13,7 +13,7 @@ Stores information about the hospitals or service centers.
 | `id` | BigInt | Primary Key, Auto-increment | Unique identifier for the provider. |
 | `name` | Char(150) | Not Null | Name of the hospital or institution. |
 | `location` | Char(255) | Nullable | Physical address or city. |
-| `working_hours` | Char(100) | Default: "09:00 AM - 05:00 PM" | Operational hours text. |
+| `working_hours` | Char(100) | Default: "09:00 AM - 02:00 PM" | Operational hours text. |
 | `admin_id` | Int | Foreign Key (`auth_user.id`) | The user who manages this provider. |
 
 ### `api_service`
