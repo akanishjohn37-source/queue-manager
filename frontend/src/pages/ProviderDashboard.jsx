@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { fetchProviders, fetchServices, fetchTokensByService, updateTokenStatus, cancelAllTokens } from "../api";
+import { fetchProviders, fetchServices, fetchTokensByService, updateTokenStatus, cancelAllTokens, fetchNotifications, markNotificationRead, clearNotifications } from "../api";
 import { Users, Clock, CheckCircle, XCircle, Play, SkipForward, AlertCircle, LayoutDashboard, Building2, Zap, ArrowRight, BellRing, FileText, X, Download, Ban } from "lucide-react";
 import HospitalDirectory from "../components/HospitalDirectory";
 import jsPDF from "jspdf";
@@ -16,7 +16,68 @@ export default function ProviderDashboard() {
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancelReason, setCancelReason] = useState("");
 
+    // Notification System
+    const [notifications, setNotifications] = useState([]);
+    const [showNotifications, setShowNotifications] = useState(false);
+    const [selectedNotification, setSelectedNotification] = useState(null);
+    const [showAllNotifications, setShowAllNotifications] = useState(false);
+    const [toasts, setToasts] = useState([]);
+    const seenIds = React.useRef(new Set());
+    const isFirstLoad = React.useRef(true);
+
+    const addToast = (msg) => {
+        const id = Date.now();
+        setToasts(prev => [...prev, { id, msg }]);
+        setTimeout(() => removeToast(id), 5000);
+    };
+
+    const removeToast = (id) => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+    };
+
+    const handleNotificationClick = async (n) => {
+        setSelectedNotification(n);
+        setShowNotifications(false);
+        if (!n.is_read) {
+            try {
+                await markNotificationRead(n.id);
+                setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, is_read: true } : item));
+            } catch { }
+        }
+    };
+
+    const handleClearAll = async () => {
+        if (!window.confirm("Clear all notifications?")) return;
+        try {
+            await clearNotifications();
+            setNotifications([]);
+        } catch (e) { console.error(e); }
+    };
+
     const userId = parseInt(localStorage.getItem("user_id"));
+
+    useEffect(() => {
+        const loadNotifs = async () => {
+            try {
+                const data = await fetchNotifications();
+                const currentList = Array.isArray(data) ? data : [];
+                setNotifications(currentList);
+
+                currentList.forEach(n => {
+                    if (!seenIds.current.has(n.id)) {
+                        if (!isFirstLoad.current) {
+                            addToast(n.message);
+                        }
+                        seenIds.current.add(n.id);
+                    }
+                });
+                isFirstLoad.current = false;
+            } catch { }
+        };
+        loadNotifs();
+        const interval = setInterval(loadNotifs, 10000);
+        return () => clearInterval(interval);
+    }, []);
 
     useEffect(() => {
         if (!userId) return;
@@ -334,6 +395,57 @@ export default function ProviderDashboard() {
                 </div>
 
                 <div className="relative z-10 flex gap-4">
+                    <div className="relative">
+                        <button
+                            onClick={() => setShowNotifications(!showNotifications)}
+                            className="p-4 bg-white/10 hover:bg-white/20 text-white backdrop-blur-md rounded-2xl font-bold transition-all flex items-center gap-3 border border-white/10 shadow-xl"
+                        >
+                            <div className="relative">
+                                <BellRing size={20} />
+                                {notifications.some(n => !n.is_read) && (
+                                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-slate-900"></span>
+                                )}
+                            </div>
+                        </button>
+
+                        {showNotifications && (
+                            <div className="absolute top-full right-0 mt-4 w-96 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-scale-in origin-top-right text-left z-50">
+                                <div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                                    <span className="font-bold text-slate-700">Notifications <span className="text-[10px] text-slate-400 font-normal ml-1">(Click item to view)</span></span>
+                                    <span
+                                        onClick={() => notifications.length > 0 && handleNotificationClick(notifications[0])}
+                                        className="text-xs font-bold bg-blue-100 text-blue-600 px-2 py-1 rounded-lg cursor-pointer hover:bg-blue-200 transition-colors"
+                                        title="View latest"
+                                    >
+                                        {notifications.filter(n => !n.is_read).length}
+                                    </span>
+                                </div>
+                                <div className="max-h-80 overflow-y-auto custom-scrollbar">
+                                    {notifications.length === 0 ? (
+                                        <div className="p-8 text-center text-slate-400 text-sm italic">No new notifications</div>
+                                    ) : (
+                                        notifications.map(n => (
+                                            <div
+                                                key={n.id}
+                                                onClick={() => handleNotificationClick(n)}
+                                                className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer ${!n.is_read ? 'bg-blue-50/50' : ''}`}
+                                            >
+                                                <div className="flex justify-between items-start gap-2">
+                                                    <p className={`text-sm text-slate-700 leading-snug ${!n.is_read ? 'font-black' : 'font-medium'}`}>{n.message}</p>
+                                                    {!n.is_read && <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 mt-1"></span>}
+                                                </div>
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">{new Date(n.timestamp).toLocaleString()}</p>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                                <div className="p-3 bg-slate-50 border-t border-slate-100 text-center cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => setShowAllNotifications(true)}>
+                                    <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">View All History</span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     <button
                         onClick={() => setShowCancelModal(true)}
                         className="px-6 py-4 bg-rose-500/20 hover:bg-rose-500/30 text-rose-100 backdrop-blur-md rounded-2xl font-bold transition-all flex items-center gap-3 border border-rose-500/20 shadow-xl"
@@ -578,6 +690,86 @@ export default function ProviderDashboard() {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            {/* Notification Detail Modal */}
+            {selectedNotification && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedNotification(null)}>
+                    <div className="bg-white rounded-[2rem] shadow-2xl max-w-lg w-full overflow-hidden" onClick={e => e.stopPropagation()}>
+                        <div className="p-8 space-y-6">
+                            <div className="flex items-center gap-4 border-b border-slate-100 pb-6">
+                                <div className="p-3 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-500/30">
+                                    <BellRing size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900 tracking-tight">Notification Details</h3>
+                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{new Date(selectedNotification.timestamp).toLocaleString()}</p>
+                                </div>
+                            </div>
+                            <div className="py-2">
+                                <p className="text-lg font-medium text-slate-700 leading-relaxed">{selectedNotification.message}</p>
+                            </div>
+                            <div className="pt-6 border-t border-slate-100 flex justify-end">
+                                <button onClick={() => setSelectedNotification(null)} className="px-8 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">Dismiss</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Notification History Modal */}
+            {showAllNotifications && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-md animate-fade-in" onClick={() => setShowAllNotifications(false)}>
+                    <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden ring-1 ring-white/20" onClick={e => e.stopPropagation()}>
+                        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
+                            <div>
+                                <h3 className="text-2xl font-black text-slate-900 tracking-tighter flex items-center gap-3"><BellRing className="text-blue-600" size={28} /> Notification Feed</h3>
+                                <p className="text-slate-500 font-bold text-sm mt-1">Complete history of system alerts.</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={handleClearAll}
+                                    className="px-4 py-2 bg-rose-50 text-rose-600 font-bold rounded-xl hover:bg-rose-100 transition-colors text-xs uppercase tracking-widest"
+                                >
+                                    Clear All
+                                </button>
+                                <button onClick={() => setShowAllNotifications(false)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100 transition-colors"><X className="text-slate-400 hover:text-slate-600" size={24} /></button>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-0 custom-scrollbar bg-slate-50/50">
+                            {notifications.length === 0 ? (
+                                <div className="p-20 text-center text-slate-400 font-bold italic">No history available</div>
+                            ) : (
+                                notifications.map((n) => (
+                                    <div key={n.id} className={`p-8 border-b border-slate-100/50 hover:bg-white transition-all duration-300 ${!n.is_read ? 'bg-blue-50/40' : 'bg-transparent'}`}>
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                                            <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${!n.is_read ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-slate-200 text-slate-500'}`}>
+                                                {!n.is_read ? <Zap size={10} className="fill-current" /> : <CheckCircle size={10} />}
+                                                {new Date(n.timestamp).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+                                            </span>
+                                            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5 bg-white px-3 py-1 rounded-full border border-slate-100 shadow-sm">
+                                                <Clock size={12} className="text-slate-300" /> {new Date(n.timestamp).toLocaleTimeString()}
+                                            </span>
+                                        </div>
+                                        <p className={`text-base text-slate-700 leading-relaxed ${!n.is_read ? 'font-bold' : 'font-medium'}`}>{n.message}</p>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="fixed bottom-6 right-6 z-50 space-y-4">
+                {toasts.map(t => (
+                    <div key={t.id} className="bg-slate-900/90 text-white backdrop-blur-md p-4 rounded-xl shadow-2xl border border-slate-700/50 flex items-center justify-between gap-6 min-w-[300px] animate-slide-up">
+                        <div className="flex items-center gap-3">
+                            <BellRing size={18} className="text-blue-400 animate-pulse" />
+                            <span className="text-sm font-bold leading-tight">{t.msg}</span>
+                        </div>
+                        <button onClick={() => removeToast(t.id)} className="text-slate-400 hover:text-white transition-colors"><X size={16} /></button>
+                    </div>
+                ))}
             </div>
         </div>
     );

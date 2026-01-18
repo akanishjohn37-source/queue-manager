@@ -142,3 +142,16 @@ export const cancelAllTokens = async (serviceId, remarks) => {
 export const fetchNotifications = async () => {
   return request("/notifications/");
 };
+
+export const markNotificationRead = async (id) => {
+  return request(`/notifications/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_read: true })
+  });
+};
+
+export const clearNotifications = async () => {
+  return request("/notifications/clear_all/", {
+    method: "DELETE"
+  });
+};

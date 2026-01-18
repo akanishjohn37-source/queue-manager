@@ -4,6 +4,7 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 
 from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -153,6 +154,30 @@ class TokenViewSet(viewsets.ModelViewSet):
 
         serializer.save(user=user, token_number=next_number, status="waiting", appointment_date=appt_date)
 
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        old_status = instance.status
+        updated_token = serializer.save()
+        new_status = updated_token.status
+        
+        if old_status != new_status and updated_token.user:
+            from .models import Notification
+            provider_name = updated_token.service.provider.name if updated_token.service.provider else "Hospital"
+            service_name = updated_token.service.name
+            msg = None
+            
+            if new_status == 'calling':
+                msg = f"📢 ALERT: Token #{updated_token.token_number} is now CALLED at {provider_name} ({service_name}). Please proceed immediately."
+            elif new_status == 'skipped':
+                msg = f"Token #{updated_token.token_number} at {provider_name} ({service_name}) has been marked as SKIPPED."
+            elif new_status == 'cancelled':
+                msg = f"Token #{updated_token.token_number} at {provider_name} ({service_name}) has been CANCELLED."
+            elif new_status == 'completed':
+                msg = f"Token #{updated_token.token_number} at {provider_name} ({service_name}) session marked as COMPLETED."
+            
+            if msg:
+                Notification.objects.create(user=updated_token.user, message=msg)
+
 
 # -----------------------
 # TokensByServiceView
@@ -175,7 +200,7 @@ class TokensByServiceView(APIView):
         # Filter by TODAY only (based on appointment_date)
         today = timezone.now().date()
         # We look for tokens scheduled for TODAY
-        tokens = QueueToken.objects.filter(service_id=service_id, appointment_date=today).order_by("token_number")
+        tokens = QueueToken.objects.filter(service_id=service_id, appointment_date=today).order_by("appointment_time", "token_number")
         serializer = TokenSerializer(tokens, many=True)
         return Response(serializer.data)
 
@@ -251,7 +276,7 @@ class StaffViewSet(viewsets.ModelViewSet):
         # Return only users who are NOT superusers? Or maybe specific group?
         # For now, let's return all users so Admin can see them.
         # Or better: return users who have a ServiceStaff profile OR are candidates.
-        return User.objects.filter(is_superuser=False)
+        return User.objects.filter(is_superuser=False, profile__isnull=True)
 
 class ServiceStaffViewSet(viewsets.ModelViewSet):
     """
@@ -320,21 +345,23 @@ class CancelAllTokensView(APIView):
         
         return Response({"detail": f"Cancelled {count} tokens", "count": count})
 
-class NotificationViewSet(viewsets.ReadOnlyModelViewSet):
+from .serializers_notification import NotificationSerializer
+
+class NotificationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
-    serializer_class = None # We will create a simple inline serializer or just return values
+    serializer_class = NotificationSerializer
+    serializer_class = NotificationSerializer
+    http_method_names = ['get', 'patch', 'delete', 'head', 'options']
+
+    @action(detail=False, methods=['delete'])
+    def clear_all(self, request):
+        self.get_queryset().delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def get_queryset(self):
         from .models import Notification
         return Notification.objects.filter(user=self.request.user).order_by('-timestamp')
     
-    def list(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-        # manual serialization
-        data = [{
-            "id": n.id,
-            "message": n.message,
-            "is_read": n.is_read,
-            "timestamp": n.timestamp
-        } for n in queryset]
-        return Response(data)
+    def perform_create(self, serializer):
+        # Users shouldn't create their own notifications via API usually, but if needed:
+        serializer.save(user=self.request.user)
