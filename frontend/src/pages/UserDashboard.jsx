@@ -102,6 +102,27 @@ export default function UserDashboard() {
     setTimeout(() => removeToast(id), 5000); // Auto dismiss after 5s
   };
 
+  const playNotificationSound = () => {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(500, audioCtx.currentTime); // higher pitch
+      oscillator.frequency.exponentialRampToValueAtTime(1000, audioCtx.currentTime + 0.1);
+
+      gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+
+      oscillator.start();
+      oscillator.stop(audioCtx.currentTime + 0.5);
+    } catch (e) { console.error("Audio play failed", e); }
+  };
+
   const removeToast = (id) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
@@ -137,9 +158,26 @@ export default function UserDashboard() {
                 addToast(n.message);
               }
 
-              // Browser Notification
+              // Browser Notification (System Level)
               if ("Notification" in window && Notification.permission === "granted") {
-                new Notification("Queue Manager Alert", { body: n.message, icon: "/vite.svg" });
+                try {
+                  // Send system notification
+                  const notif = new Notification("Queue Manager Alert", {
+                    body: n.message,
+                    icon: "/vite.svg",
+                    vibrate: [200, 100, 200], // Vibration pattern
+                    requireInteraction: true // Keep it on screen until user interacts
+                  });
+
+                  // Play sound
+                  playNotificationSound();
+
+                  // Click to open window
+                  notif.onclick = function () {
+                    window.focus();
+                    notif.close();
+                  };
+                } catch (e) { console.error("Notification trigger failed", e); }
               }
             }
             seenIds.current.add(n.id);
