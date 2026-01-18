@@ -5,7 +5,7 @@ from django.conf import settings
 class Provider(models.Model):
     name = models.CharField(max_length=150)
     location = models.CharField(max_length=255, blank=True, null=True)
-    working_hours = models.CharField(max_length=100, default="09:00 AM - 05:00 PM")
+    working_hours = models.CharField(max_length=100, default="09:00 AM - 02:00 PM")
     admin = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="managed_providers")
     
     def __str__(self):
@@ -30,7 +30,9 @@ class Token(models.Model):
     visitor_name = models.CharField(max_length=150, blank=True, null=True)
     service = models.ForeignKey(Service, on_delete=models.CASCADE)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, null=True, blank=True)
+    appointment_date = models.DateField(null=True, blank=True)
     appointment_time = models.TimeField(null=True, blank=True)
+    remarks = models.TextField(blank=True, null=True)
 
     def __str__(self):
         who = self.visitor_name or (self.user.username if self.user else "User")
@@ -55,3 +57,21 @@ class ServiceStaff(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.service.name}"
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="profile")
+    phone = models.CharField(max_length=15, blank=True, null=True)
+    age = models.IntegerField(blank=True, null=True)
+    dob = models.DateField(blank=True, null=True)
+
+    def __str__(self):
+        return f"{self.user.username}'s profile"
+
+class Notification(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications")
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"To {self.user.username}: {self.message[:30]}"

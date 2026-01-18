@@ -4,6 +4,7 @@ from django.db import transaction
 from django.shortcuts import get_object_or_404
 
 from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -105,11 +106,24 @@ class TokenViewSet(viewsets.ModelViewSet):
         # fallback empty queryset to avoid import errors; will raise runtime errors on use
         queryset = []
         serializer_class = TokenSerializer
+        serializer_class = TokenSerializer
     else:
-        queryset = QueueToken.objects.all().order_by("-id")  # ordering for admin lists
+        queryset = QueueToken.objects.all().order_by("-id")
         serializer_class = TokenSerializer
 
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        if QueueToken is None:
+            return []
+        
+        queryset = QueueToken.objects.all().order_by("-id")
+        
+        # Filter for current user if requested
+        if self.request.query_params.get("user") == "me" and self.request.user.is_authenticated:
+            return queryset.filter(user=self.request.user)
+            
+        return queryset
 
     def perform_create(self, serializer):
         """
@@ -123,12 +137,46 @@ class TokenViewSet(viewsets.ModelViewSet):
 
         # find last token number for service TODAY
         today = timezone.now().date()
+        
+        # appointment_date handling
+        appt_date = serializer.validated_data.get("appointment_date")
+        if not appt_date:
+            appt_date = today
+
+        # find last token for service on the requested date
         last_token = (
-            QueueToken.objects.filter(service=service, issued_at__date=today).order_by("-token_number").first()
+            QueueToken.objects.filter(service=service, appointment_date=appt_date).order_by("-token_number").first()
         )
+        # Fallback for legacy data: if no tokens found by date, and date is today, check issued_at?
+        # For now, let's assume we are moving to appointment_date strictly.
+        
         next_number = last_token.token_number + 1 if last_token else 1
 
-        serializer.save(user=user, token_number=next_number, status="waiting")
+        serializer.save(user=user, token_number=next_number, status="waiting", appointment_date=appt_date)
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        old_status = instance.status
+        updated_token = serializer.save()
+        new_status = updated_token.status
+        
+        if old_status != new_status and updated_token.user:
+            from .models import Notification
+            provider_name = updated_token.service.provider.name if updated_token.service.provider else "Hospital"
+            service_name = updated_token.service.name
+            msg = None
+            
+            if new_status == 'calling':
+                msg = f"📢 ALERT: Token #{updated_token.token_number} is now CALLED at {provider_name} ({service_name}). Please proceed immediately."
+            elif new_status == 'skipped':
+                msg = f"Token #{updated_token.token_number} at {provider_name} ({service_name}) has been marked as SKIPPED."
+            elif new_status == 'cancelled':
+                msg = f"Token #{updated_token.token_number} at {provider_name} ({service_name}) has been CANCELLED."
+            elif new_status == 'completed':
+                msg = f"Token #{updated_token.token_number} at {provider_name} ({service_name}) session marked as COMPLETED."
+            
+            if msg:
+                Notification.objects.create(user=updated_token.user, message=msg)
 
 
 # -----------------------
@@ -149,9 +197,10 @@ class TokensByServiceView(APIView):
         if QueueToken is None:
             return Response({"detail": "Token model missing"}, status=500)
 
-        # Filter by TODAY only
+        # Filter by TODAY only (based on appointment_date)
         today = timezone.now().date()
-        tokens = QueueToken.objects.filter(service_id=service_id, issued_at__date=today).order_by("token_number")
+        # We look for tokens scheduled for TODAY
+        tokens = QueueToken.objects.filter(service_id=service_id, appointment_date=today).order_by("appointment_time", "token_number")
         serializer = TokenSerializer(tokens, many=True)
         return Response(serializer.data)
 
@@ -227,7 +276,7 @@ class StaffViewSet(viewsets.ModelViewSet):
         # Return only users who are NOT superusers? Or maybe specific group?
         # For now, let's return all users so Admin can see them.
         # Or better: return users who have a ServiceStaff profile OR are candidates.
-        return User.objects.filter(is_superuser=False)
+        return User.objects.filter(is_superuser=False, profile__isnull=True)
 
 class ServiceStaffViewSet(viewsets.ModelViewSet):
     """
@@ -262,3 +311,57 @@ class ServiceStaffViewSet(viewsets.ModelViewSet):
             serializer = self.get_serializer(profile)
             return Response(serializer.data)
         return super().list(request, *args, **kwargs)
+
+class CancelAllTokensView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from .models import Notification, Token as QueueToken # ensuring imports locally
+        
+        service_id = request.data.get("service")
+        remarks = request.data.get("remarks")
+        
+        if not service_id:
+            return Response({"detail": "Service ID required"}, status=400)
+            
+        today = timezone.now().date()
+        
+        tokens_to_cancel = QueueToken.objects.filter(
+            service_id=service_id, 
+            appointment_date=today,
+            status='waiting'
+        )
+        
+        count = tokens_to_cancel.count()
+        
+        for token in tokens_to_cancel:
+            if token.user:
+                Notification.objects.create(
+                    user=token.user,
+                    message=f"Your appointment #{token.token_number} has been cancelled. Reason: {remarks}"
+                )
+        
+        tokens_to_cancel.update(status='cancelled', remarks=remarks)
+        
+        return Response({"detail": f"Cancelled {count} tokens", "count": count})
+
+from .serializers_notification import NotificationSerializer
+
+class NotificationViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = NotificationSerializer
+    serializer_class = NotificationSerializer
+    http_method_names = ['get', 'patch', 'delete', 'head', 'options']
+
+    @action(detail=False, methods=['delete'])
+    def clear_all(self, request):
+        self.get_queryset().delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def get_queryset(self):
+        from .models import Notification
+        return Notification.objects.filter(user=self.request.user).order_by('-timestamp')
+    
+    def perform_create(self, serializer):
+        # Users shouldn't create their own notifications via API usually, but if needed:
+        serializer.save(user=self.request.user)

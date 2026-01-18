@@ -58,15 +58,25 @@ if TokenModel is None:
         visitor_name = serializers.CharField(allow_blank=True, required=False)
 
         service_name = serializers.SerializerMethodField()
+        provider_name = serializers.SerializerMethodField()
 
         def get_service_name(self, obj):
             # obj may be dict (fallback) or model instance
             if isinstance(obj, dict):
                 return obj.get("service_name") or obj.get("service")
             return getattr(obj, "service_name", getattr(obj, "service", None))
+
+        def get_provider_name(self, obj):
+            if isinstance(obj, dict):
+                return obj.get("provider_name")
+            svc = getattr(obj, "service", None)
+            if svc and getattr(svc, "provider", None):
+                return svc.provider.name
+            return None
 else:
     class TokenSerializer(serializers.ModelSerializer):
         service_name = serializers.SerializerMethodField(read_only=True)
+        provider_name = serializers.SerializerMethodField(read_only=True)
 
         class Meta:
             model = TokenModel
@@ -79,8 +89,8 @@ else:
                 # fallback minimal set
                 model_field_names = ["id", "token_number", "service", "status", "issued_at", "user", "visitor_name"]
 
-            # ensure service_name included and unique
-            fields = list(dict.fromkeys(model_field_names + ["service_name"]))
+            # ensure service_name and provider_name included and unique
+            fields = list(dict.fromkeys(model_field_names + ["service_name", "provider_name"]))
             extra_kwargs = {
                 "token_number": {"read_only": True},
                 # "status": {"read_only": True},  <-- removed to allow updates
@@ -99,6 +109,12 @@ else:
                 return name
             # else if service is integer id
             return getattr(svc, "id", None)
+
+        def get_provider_name(self, obj):
+            svc = getattr(obj, "service", None)
+            if svc and getattr(svc, "provider", None):
+                return svc.provider.name
+            return None
 
 
 # -------------------------
@@ -123,10 +139,13 @@ else:
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
     password2 = serializers.CharField(write_only=True, required=True, label="Confirm password")
+    phone = serializers.CharField(write_only=True, required=True)
+    age = serializers.IntegerField(write_only=True, required=True)
+    dob = serializers.DateField(write_only=True, required=True)
 
     class Meta:
         model = User
-        fields = ("username", "password", "password2", "email")
+        fields = ("username", "password", "password2", "email", "phone", "age", "dob")
         extra_kwargs = {"email": {"required": False}}
 
     def validate(self, data):
@@ -136,14 +155,43 @@ class RegisterSerializer(serializers.ModelSerializer):
         username = data.get("username")
         if User.objects.filter(username=username).exists():
             raise serializers.ValidationError({"username": "A user with that username already exists."})
+        
+        # Phone validation: 10 digits and numeric
+        phone = data.get("phone")
+        if not phone.isdigit() or len(phone) != 10:
+            raise serializers.ValidationError({"phone": "Phone number must be exactly 10 digits and contain only numbers."})
+
+        # Age validation: max 99
+        age = data.get("age")
+        if age > 99:
+            raise serializers.ValidationError({"age": "Age cannot be greater than 99."})
+        if age < 0:
+            raise serializers.ValidationError({"age": "Age cannot be negative."})
+
+        # DOB validation: must be in the past
+        from django.utils import timezone
+        dob = data.get("dob")
+        if dob >= timezone.now().date():
+            raise serializers.ValidationError({"dob": "Date of birth must be in the past."})
+
         return data
 
     def create(self, validated_data):
         validated_data.pop("password2", None)
+        phone = validated_data.pop("phone")
+        age = validated_data.pop("age")
+        dob = validated_data.pop("dob")
         password = validated_data.pop("password")
-        user = User(**validated_data)
-        user.set_password(password)
-        user.save()
+        
+        user = User.objects.create_user(
+            username=validated_data.get("username"),
+            email=validated_data.get("email", ""),
+            password=password
+        )
+        
+        # Create UserProfile
+        _models.UserProfile.objects.create(user=user, phone=phone, age=age, dob=dob)
+        
         return user
 
 
@@ -173,8 +221,10 @@ class ServiceStaffSerializer(serializers.ModelSerializer):
     # Retrieve nested data for display
     user_name = serializers.ReadOnlyField(source='user.username')
     service_name = serializers.ReadOnlyField(source='service.name')
+    provider_name = serializers.ReadOnlyField(source='service.provider.name')
+    provider_location = serializers.ReadOnlyField(source='service.provider.location')
 
     class Meta:
         model = _models.ServiceStaff
-        fields = ['id', 'user', 'user_name', 'service', 'service_name', 'created_at']
+        fields = ['id', 'user', 'user_name', 'service', 'service_name', 'provider_name', 'provider_location', 'created_at']
         read_only_fields = ['created_at']

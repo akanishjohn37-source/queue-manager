@@ -1,8 +1,76 @@
 import React, { useEffect, useState, useRef } from "react";
-import { fetchProviders, fetchServices, fetchTokensByService, createToken } from "../api";
-import { Building2, Stethoscope, User, Ticket, Clock, CheckCircle, AlertCircle } from "lucide-react";
+import { fetchProviders, fetchServices, fetchTokensByService, createToken, fetchMyTokens, apiDelete, fetchNotifications, markNotificationRead, clearNotifications } from "../api";
+import { Building2, Stethoscope, User, Ticket, Clock, CheckCircle, AlertCircle, Calendar, ChevronRight, Search, Zap, BellRing, Trash2, X } from "lucide-react";
 
-import HospitalDirectory from "../components/HospitalDirectory";
+// --- Components ---
+const PremiumSelect = ({ label, options, value, onChange, icon: Icon, disabled, placeholder }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectedOption = options.find(o => String(o.value) === String(value));
+
+  return (
+    <div className="group space-y-3" ref={containerRef}>
+      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest ml-1">{label}</label>
+      <div className="relative">
+        <div
+          onClick={() => !disabled && setIsOpen(!isOpen)}
+          className={`
+            relative flex items-center justify-between w-full px-4 py-4 
+            bg-white border rounded-xl transition-all duration-200 cursor-pointer
+            ${disabled ? 'bg-slate-50 border-slate-200 cursor-not-allowed opacity-60' : 'border-slate-200 hover:border-blue-400 hover:shadow-md'}
+            ${isOpen ? 'ring-2 ring-blue-500/20 border-blue-500' : ''}
+          `}
+        >
+          <div className="flex items-center gap-4">
+            {Icon && <Icon className={`transition-colors ${isOpen || value ? 'text-blue-600' : 'text-slate-400'}`} size={18} />}
+            <span className={`font-bold ${value ? 'text-slate-900' : 'text-slate-400'}`}>
+              {selectedOption ? selectedOption.label : placeholder}
+            </span>
+          </div>
+          <ChevronRight size={16} className={`text-slate-400 transition-transform duration-300 ${isOpen ? 'rotate-[270deg]' : 'rotate-90'}`} />
+        </div>
+
+        {isOpen && !disabled && (
+          <div className="absolute top-full left-0 z-50 w-full mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl animate-scale-in overflow-hidden">
+            <div className="max-h-60 overflow-y-auto custom-scrollbar p-1.5">
+              {options.length > 0 ? (
+                options.map((option) => (
+                  <div
+                    key={option.value}
+                    onClick={() => {
+                      onChange(option.value);
+                      setIsOpen(false);
+                    }}
+                    className={`
+                      flex items-center justify-between px-4 py-3 rounded-lg cursor-pointer transition-colors font-medium text-sm
+                      ${String(value) === String(option.value) ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'}
+                    `}
+                  >
+                    <span>{option.label}</span>
+                    {String(value) === String(option.value) && <CheckCircle size={14} className="text-blue-600" />}
+                  </div>
+                ))
+              ) : (
+                <div className="px-4 py-3 text-sm text-slate-400 italic">No options available</div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export default function UserDashboard() {
   const [viewMode, setViewMode] = useState("book"); // "book" or "directory"
@@ -11,16 +79,83 @@ export default function UserDashboard() {
 
   const [selectedProvider, setSelectedProvider] = useState("");
   const [selectedService, setSelectedService] = useState("");
+  const [selectedDate, setSelectedDate] = useState("");
   const [selectedTime, setSelectedTime] = useState("");
-  const [visitorName, setVisitorName] = useState("");
 
   const [queue, setQueue] = useState([]);
   const [message, setMessage] = useState("");
-  const [myTokens, setMyTokens] = useState([]); // Track tokens created in this session
+  const [myTokens, setMyTokens] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState(null);
+  const [showAllNotifications, setShowAllNotifications] = useState(false);
+
+  // Toast System
+  const [toasts, setToasts] = useState([]);
+  const seenIds = useRef(new Set());
+  const isFirstLoad = useRef(true);
+
+  const addToast = (msg) => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, msg }]);
+    setTimeout(() => removeToast(id), 5000); // Auto dismiss after 5s
+  };
+
+  const removeToast = (id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  const today = new Date();
+  today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+  const todayStr = today.toISOString().split('T')[0];
+
+  useEffect(() => {
+    const loadNotifs = async () => {
+      try {
+        const data = await fetchNotifications();
+        const currentList = Array.isArray(data) ? data : [];
+        setNotifications(currentList);
+
+        // Process new notifications for Toasts
+        currentList.forEach(n => {
+          if (!seenIds.current.has(n.id)) {
+            // Only toast if it's NOT the first load to avoid blasting history
+            if (!isFirstLoad.current) {
+              addToast(n.message);
+            }
+            seenIds.current.add(n.id);
+          }
+        });
+        isFirstLoad.current = false;
+      } catch { }
+    };
+    loadNotifs();
+    const interval = setInterval(loadNotifs, 5000); // Poll every 5s for faster updates
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadMyTokens = async () => {
+    try {
+      const data = await fetchMyTokens();
+      setMyTokens(Array.isArray(data) ? data : []);
+    } catch { }
+  };
+
+  const handleDeleteToken = async (id) => {
+    if (!window.confirm("Are you sure you want to cancel this booking?")) return;
+    try {
+      await apiDelete(`/tokens/${id}/`);
+      loadMyTokens();
+      setMessage("Booking cancelled successfully");
+    } catch (err) {
+      alert("Failed to cancel booking");
+    }
+  };
 
   // Load Providers
   useEffect(() => {
-    fetchProviders().then(setProviders).catch(() => setMessage("Failed to load hospitals"));
+    fetchProviders().then(setProviders).catch(() => setMessage("Failed to load clinical network"));
+    loadMyTokens();
   }, []);
 
   // Load Services when Provider changes
@@ -29,10 +164,9 @@ export default function UserDashboard() {
       setServices([]);
       return;
     }
-    fetchServices(selectedProvider).then(setServices).catch(() => setMessage("Failed to load services"));
+    fetchServices(selectedProvider).then(setServices).catch(() => setMessage("Failed to load department services"));
   }, [selectedProvider]);
 
-  // Poll Queue
   const loadQueue = () => {
     if (!selectedService) {
       setQueue([]);
@@ -42,7 +176,19 @@ export default function UserDashboard() {
       .then((data) => {
         setQueue(data);
       })
-      .catch(() => setMessage("Failed to load queue"));
+      .catch(() => setMessage("Connection error during queue fetch"));
+  };
+
+  const handleNotificationClick = async (n) => {
+    setSelectedNotification(n);
+    setShowNotifications(false);
+    if (!n.is_read) {
+      try {
+        await markNotificationRead(n.id);
+        // Update local state to reflect read status
+        setNotifications(prev => prev.map(item => item.id === n.id ? { ...item, is_read: true } : item));
+      } catch { }
+    }
   };
 
   useEffect(() => {
@@ -52,267 +198,334 @@ export default function UserDashboard() {
     return () => clearInterval(id);
   }, [selectedService]);
 
-  // Request Notification Permission
-  useEffect(() => {
-    if ("Notification" in window) {
-      Notification.requestPermission();
-    }
-  }, []);
-
-  const playNotificationSound = () => {
-    // Simple beep sound (Base64)
-    const audio = new Audio("https://codeskulptor-demos.commondatastorage.googleapis.com/pang/pop.mp3");
-    audio.play().catch(e => console.error("Audio play failed:", e));
+  const handleClearAll = async () => {
+    if (!window.confirm("Clear all notifications?")) return;
+    try {
+      await clearNotifications();
+      setNotifications([]);
+    } catch (e) { console.error(e); }
   };
-
-  const notifyUser = (token) => {
-    if (Notification.permission === "granted") {
-      new Notification("Token Called!", {
-        body: `Token #${token.token_number} for ${token.visitor_name} is now being served!`,
-        icon: "/vite.svg"
-      });
-    }
-    playNotificationSound();
-  };
-
-  // Monitor Queue for Status Changes
-  useEffect(() => {
-    if (queue.length === 0) return;
-
-    setMyTokens(prevTokens => {
-      let hasChanges = false;
-      const newTokens = prevTokens.map(t => {
-        const match = queue.find(q => q.id === t.id);
-        if (match && match.status !== t.status) {
-          hasChanges = true;
-          // Trigger notification if status changes to 'calling'
-          if (match.status === 'calling' && t.status === 'waiting') {
-            notifyUser(match);
-          }
-          return match;
-        }
-        return t;
-      });
-      return hasChanges ? newTokens : prevTokens;
-    });
-  }, [queue]);
 
   const handleCreateToken = async () => {
-    if (!selectedService || !visitorName || !selectedTime) {
-      setMessage("Please select a hospital, service, time slot, and enter a name.");
+    const name = localStorage.getItem("username") || "User";
+
+    // Validation: Pop message if steps are missed
+    if (!selectedService || !selectedTime || !selectedDate) {
+      setMessage("Please complete all steps: Clinical Institution, Service, appointment Date, and Time.");
+      // return early to prevent execution
       return;
     }
+
     try {
-      const token = await createToken(selectedService, visitorName, selectedTime);
-      setMessage(`Success! Your token number is #${token.token_number} for ${selectedTime}`);
-      setMyTokens(prev => [...prev, token]);
-      setVisitorName(""); // Clear name for next booking
-      setSelectedTime(""); // Clear time
+      const token = await createToken(selectedService, name, selectedTime, selectedDate);
+      setMessage(`Confirmed! Your unique entry token is #${token.token_number} for ${selectedDate} at ${selectedTime}.`);
+      setMyTokens(prev => [token, ...prev]);
+
+      // Reset sensitive fields but maybe keep provider?
+      setSelectedTime("");
+      // setSelectedDate(""); // Keep date for convenience? Or reset? Let's keep it.
       loadQueue();
     } catch (err) {
       console.error(err);
-      setMessage("Error generating token");
+      setMessage("System error during token generation");
     }
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">User Dashboard</h1>
-          <p className="text-gray-500 mt-1">Book tokens and view hospital details</p>
+    <div className="max-w-7xl mx-auto px-6 py-12 space-y-12 animate-fade-in">
+      {/* Hero Header */}
+      <div className="relative overflow-hidden bg-white premium-card p-10 flex flex-col md:flex-row items-center justify-between gap-8 border-none ring-1 ring-slate-200/50">
+        <div className="relative z-10 space-y-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 text-blue-600 text-[10px] font-bold uppercase tracking-wider mb-2">
+            <Zap size={12} />
+            Real-time Systems Active
+          </div>
+          <h1 className="text-4xl font-extrabold text-slate-900 tracking-tight">Client Hub</h1>
+          <p className="text-slate-500 font-medium text-lg">Securely manage clinical scheduling and live status monitoring.</p>
         </div>
-        <div className="flex bg-gray-100 p-1 rounded-lg">
-          <button
-            onClick={() => setViewMode("book")}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${viewMode === "book" ? "bg-white text-blue-600 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}
+
+        <div className="relative z-20">
+          <div
+            onClick={() => setShowNotifications(!showNotifications)}
+            className="relative cursor-pointer p-4 bg-slate-50 rounded-2xl hover:bg-slate-100 transition-colors border border-slate-100 shadow-sm"
           >
-            Book Token
-          </button>
-          <button
-            onClick={() => setViewMode("directory")}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${viewMode === "directory" ? "bg-white text-blue-600 shadow-sm" : "text-gray-600 hover:text-gray-900"}`}
-          >
-            Hospital Directory
-          </button>
+            <BellRing size={24} className={notifications.length > 0 ? "text-blue-600" : "text-slate-400"} />
+            {notifications.some(n => !n.is_read) && (
+              <span className="absolute top-3 right-3 w-3 h-3 bg-rose-500 border-2 border-white rounded-full animate-pulse"></span>
+            )}
+          </div>
+
+          {showNotifications && (
+            <div className="absolute top-full right-0 mt-4 w-96 bg-white rounded-2xl shadow-2xl border border-slate-100 overflow-hidden animate-scale-in origin-top-right">
+              <div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                <span className="font-bold text-slate-700">Notifications <span className="text-[10px] text-slate-400 font-normal ml-1">(Click item to view)</span></span>
+                <span
+                  onClick={() => notifications.length > 0 && handleNotificationClick(notifications[0])}
+                  className="text-xs font-bold bg-blue-100 text-blue-600 px-2 py-1 rounded-lg cursor-pointer hover:bg-blue-200 transition-colors"
+                  title="View latest"
+                >
+                  {notifications.filter(n => !n.is_read).length}
+                </span>
+              </div>
+              <div className="max-h-80 overflow-y-auto custom-scrollbar">
+                {notifications.length === 0 ? (
+                  <div className="p-8 text-center text-slate-400 text-sm italic">No new notifications</div>
+                ) : (
+                  notifications.map(n => (
+                    <div
+                      key={n.id}
+                      onClick={() => handleNotificationClick(n)}
+                      className={`p-4 border-b border-slate-50 hover:bg-slate-50 transition-colors cursor-pointer ${!n.is_read ? 'bg-blue-50/50' : ''}`}
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <p className={`text-sm text-slate-700 leading-snug ${!n.is_read ? 'font-black' : 'font-medium'}`}>{n.message}</p>
+                        {!n.is_read && <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 mt-1"></span>}
+                      </div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-2">{new Date(n.timestamp).toLocaleString()}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="p-3 bg-slate-50 border-t border-slate-100 text-center cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => setShowAllNotifications(true)}>
+                <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">View All History</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {viewMode === "directory" ? (
-        <HospitalDirectory />
-      ) : (
-        <>
+      {/* Notification Detail Modal */}
+      {selectedNotification && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedNotification(null)}>
+          <div className="bg-white rounded-[2rem] shadow-2xl max-w-lg w-full overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-8 space-y-6">
+              <div className="flex items-center gap-4 border-b border-slate-100 pb-6">
+                <div className="p-3 bg-blue-600 rounded-xl text-white shadow-lg shadow-blue-500/30">
+                  <BellRing size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Notification Details</h3>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{new Date(selectedNotification.timestamp).toLocaleString()}</p>
+                </div>
+              </div>
+
+              <div className="py-2">
+                <p className="text-lg font-medium text-slate-700 leading-relaxed">
+                  {selectedNotification.message}
+                </p>
+              </div>
+
+              <div className="pt-6 border-t border-slate-100 flex justify-end gap-3">
+                <button
+                  onClick={() => { setSelectedNotification(null); setShowAllNotifications(true); }}
+                  className="px-6 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors"
+                >
+                  View History
+                </button>
+                <button
+                  onClick={() => setSelectedNotification(null)}
+                  className="btn-primary !py-3 !px-8"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full Notification History Modal */}
+      {showAllNotifications && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/80 backdrop-blur-md animate-fade-in" onClick={() => setShowAllNotifications(false)}>
+          <div className="bg-white rounded-[2.5rem] shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden ring-1 ring-white/20" onClick={e => e.stopPropagation()}>
+            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
+              <div>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tighter flex items-center gap-3">
+                  <BellRing className="text-blue-600" size={28} /> Notification Feed
+                </h3>
+                <p className="text-slate-500 font-bold text-sm mt-1">Complete history of system alerts and status updates.</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleClearAll}
+                  className="px-4 py-2 bg-rose-50 text-rose-600 font-bold rounded-xl hover:bg-rose-100 transition-colors text-xs uppercase tracking-widest"
+                >
+                  Clear All
+                </button>
+                <button onClick={() => setShowAllNotifications(false)} className="p-2 bg-slate-50 rounded-full hover:bg-slate-100 transition-colors">
+                  <X className="text-slate-400 hover:text-slate-600" size={24} />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-0 custom-scrollbar bg-slate-50/50">
+              {notifications.length === 0 ? (
+                <div className="p-20 text-center text-slate-400 font-bold italic">No history available</div>
+              ) : (
+                notifications.map((n) => (
+                  <div key={n.id} className={`p-8 border-b border-slate-100/50 hover:bg-white transition-all duration-300 ${!n.is_read ? 'bg-blue-50/40' : 'bg-transparent'}`}>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                      <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${!n.is_read ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30' : 'bg-slate-200 text-slate-500'}`}>
+                        {!n.is_read ? <Zap size={10} className="fill-current" /> : <CheckCircle size={10} />}
+                        {new Date(n.timestamp).toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })}
+                      </span>
+                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5 bg-white px-3 py-1 rounded-full border border-slate-100 shadow-sm">
+                        <Clock size={12} className="text-slate-300" /> {new Date(n.timestamp).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <p className={`text-base text-slate-700 leading-relaxed ${!n.is_read ? 'font-bold' : 'font-medium'}`}>
+                      {n.message}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
+        {/* Left Column: Form */}
+        <div className="lg:col-span-12">
           {message && (
-            <div className={`max-w-4xl mx-auto p-4 rounded-lg flex items-center space-x-2 ${message.includes("Success") ? "bg-green-50 text-green-700" : "bg-blue-50 text-blue-700"}`}>
-              {message.includes("Success") ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
-              <span>{message}</span>
+            <div className={`mb-10 p-5 rounded-2xl flex items-center gap-4 animate-fade-in font-semibold border ${message.includes("Confirmed") ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-blue-50 text-blue-700 border-blue-100"}`}>
+              {message.includes("Confirmed") ? <CheckCircle className="shrink-0" size={24} /> : <AlertCircle className="shrink-0" size={24} />}
+              <span className="text-sm md:text-base">{message}</span>
             </div>
           )}
+        </div>
 
-          <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* Booking Form */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
-              <h2 className="text-xl font-semibold text-gray-800 flex items-center space-x-2">
-                <Ticket className="text-blue-600" />
-                <span>New Booking</span>
+        <div className="lg:col-span-7 space-y-10">
+          <div className="premium-card p-10 space-y-10">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-6">
+              <h2 className="text-2xl font-bold flex items-center gap-3">
+                <span className="p-2 bg-blue-600 rounded-lg text-white shadow-lg shadow-blue-500/20">
+                  <Zap size={20} />
+                </span>
+                Scheduling Matrix
               </h2>
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                Step {!selectedProvider ? 0 : !selectedService ? 1 : (!selectedDate || !selectedTime) ? 2 : 3} / 3
+              </span>
+            </div>
+
+            <div className="space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <PremiumSelect
+                  label="Clinical Institution"
+                  options={providers.map(p => ({ value: p.id, label: p.name }))}
+                  value={selectedProvider}
+                  onChange={setSelectedProvider}
+                  icon={Building2}
+                  placeholder="Select Hospital"
+                />
+
+                <PremiumSelect
+                  label="Specialized Service"
+                  options={services.map(s => ({ value: s.id, label: s.name }))}
+                  value={selectedService}
+                  onChange={setSelectedService}
+                  icon={Stethoscope}
+                  disabled={!selectedProvider}
+                  placeholder="Choose Department"
+                />
+              </div>
 
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Select Hospital</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Building2 className="h-5 w-5 text-gray-400" />
+                <div className="flex flex-col md:flex-row gap-6">
+                  <div className="w-full md:w-1/3 group space-y-3">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest ml-1">Date</label>
+                    <div className="relative">
+                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-600 pointer-events-none" size={18} />
+                      <input
+                        type="date"
+                        className="premium-input !pl-12 !py-4 font-bold"
+                        min={todayStr}
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                      />
                     </div>
-                    <select
-                      className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors appearance-none bg-white"
-                      value={selectedProvider}
-                      onChange={(e) => {
-                        setSelectedProvider(e.target.value);
-                        setSelectedService("");
-                      }}
-                    >
-                      <option value="">-- Choose Hospital --</option>
-                      {providers.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Select Service</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Stethoscope className="h-5 w-5 text-gray-400" />
+                  <div className="flex-1 space-y-3">
+                    <label className="text-[11px] font-bold text-slate-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                      <Clock size={14} />
+                      Preferred Operation Window
+                    </label>
+                    <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                      {["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
+                        "12:00", "12:30", "13:00", "13:30", "14:00"].map((time) => {
+                          const isSelected = selectedTime === time;
+                          return (
+                            <button
+                              key={time}
+                              onClick={() => setSelectedTime(time)}
+                              className={`py-3 px-1 rounded-xl text-[13px] font-bold transition-all duration-300 border-2 ${isSelected
+                                ? "bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/30 scale-105"
+                                : "bg-white border-slate-100 text-slate-700 hover:border-blue-200 hover:bg-blue-50"
+                                }`}
+                            >
+                              {time}
+                            </button>
+                          );
+                        })}
                     </div>
-                    <select
-                      className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors appearance-none bg-white"
-                      value={selectedService}
-                      onChange={(e) => setSelectedService(e.target.value)}
-                      disabled={!selectedProvider}
-                    >
-                      <option value="">-- Choose Service --</option>
-                      {services.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Visitor Name</label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <User className="h-5 w-5 text-gray-400" />
-                    </div>
-                    <input
-                      className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                      placeholder="Enter name"
-                      value={visitorName}
-                      onChange={(e) => setVisitorName(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Select Time Slot</label>
-                  <div className="grid grid-cols-4 gap-2">
-                    {["08:00", "08:30", "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
-                      "12:00", "12:30", "13:00", "13:30", "14:00", "14:30", "15:00"].map((time, index) => {
-                        // VIBGYOR Colors Mapping
-                        const colors = [
-                          "bg-violet-500 hover:bg-violet-600", // 8-9
-                          "bg-indigo-500 hover:bg-indigo-600", // 9-10
-                          "bg-blue-500 hover:bg-blue-600",     // 10-11
-                          "bg-green-500 hover:bg-green-600",   // 11-12
-                          "bg-yellow-500 hover:bg-yellow-600", // 12-13
-                          "bg-orange-500 hover:bg-orange-600", // 13-14
-                          "bg-red-500 hover:bg-red-600"        // 14-15
-                        ];
-                        // Map index to color group (approx 2 slots per hour)
-                        const colorClass = colors[Math.floor(index / 2)] || "bg-gray-500";
-                        const isSelected = selectedTime === time;
-
-                        return (
-                          <button
-                            key={time}
-                            onClick={() => setSelectedTime(time)}
-                            className={`py-2 px-1 rounded text-white text-xs font-bold transition-all transform ${isSelected ? "ring-4 ring-offset-1 ring-gray-400 scale-105" : ""
-                              } ${colorClass}`}
-                          >
-                            {time}
-                          </button>
-                        );
-                      })}
                   </div>
                 </div>
 
                 <button
                   onClick={handleCreateToken}
-                  className="w-full bg-blue-600 text-white font-semibold py-2.5 px-4 rounded-lg hover:bg-blue-700 transition-colors shadow-sm flex justify-center items-center space-x-2 mt-4"
+                  className="btn-primary w-full !py-5 text-lg flex items-center justify-center gap-3 group"
                 >
-                  <span>Generate Token</span>
+                  <Zap size={20} className="group-hover:animate-pulse" />
+                  <span>Execute Booking Request</span>
+                  <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
                 </button>
-              </div>
-            </div>
-
-            {/* My Recent Tokens */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col h-full">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center space-x-2">
-                <Clock className="text-blue-600" />
-                <span>My Recent Tokens</span>
-              </h2>
-
-              <div className="flex-grow overflow-y-auto pr-2">
-                {myTokens.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-gray-400 space-y-2">
-                    <Ticket size={48} className="opacity-20" />
-                    <p>No tokens booked yet</p>
-                  </div>
-                ) : (
-                  <ul className="space-y-3">
-                    {myTokens.map((t) => (
-                      <li key={t.id} className="bg-gray-50 p-4 rounded-lg border border-gray-100 flex justify-between items-center hover:bg-blue-50 transition-colors">
-                        <div>
-                          <div className="font-bold text-blue-700 text-lg">#{t.token_number}</div>
-                          <div className="text-gray-600 text-sm">{t.visitor_name}</div>
-                        </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-semibold uppercase tracking-wide
-                          ${t.status === 'completed' ? 'bg-green-100 text-green-800' :
-                            t.status === 'calling' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                          {t.status}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
               </div>
             </div>
           </div>
 
           {/* Current Queue Display */}
           {selectedService && (
-            <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-6 border-b pb-2">Current Queue Status</h2>
+            <div className="premium-card p-10 animate-fade-in border-blue-100 bg-blue-50/20">
+              <div className="flex items-center gap-4 mb-8">
+                <div className="bg-blue-600 p-2 rounded-xl text-white">
+                  <BellRing size={20} className="animate-bounce" />
+                </div>
+                <h2 className="text-2xl font-bold text-slate-900 leading-none">Live Service Stream</h2>
+              </div>
+
               {queue.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">No tokens in queue currently.</p>
+                <div className="text-center py-12 bg-white/50 rounded-2xl border border-dashed border-slate-200">
+                  <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Waiting for active tokens...</p>
+                </div>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                   <table className="w-full text-left">
-                    <thead>
-                      <tr className="border-b text-gray-500 text-sm uppercase tracking-wider">
-                        <th className="py-3 px-4">Token</th>
-                        <th className="py-3 px-4">Name</th>
-                        <th className="py-3 px-4">Status</th>
+                    <thead className="bg-slate-50">
+                      <tr className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                        <th className="py-5 px-6">Sequence</th>
+                        <th className="py-5 px-6">Identity</th>
+                        <th className="py-5 px-6">Department</th>
+                        <th className="py-5 px-6">Status</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-slate-100">
                       {queue.map((t) => (
-                        <tr key={t.id} className={`hover:bg-gray-50 transition-colors ${t.status === 'calling' ? 'bg-blue-50' : ''}`}>
-                          <td className="py-3 px-4 font-bold text-gray-800">#{t.token_number}</td>
-                          <td className="py-3 px-4 text-gray-600">{t.visitor_name}</td>
-                          <td className="py-3 px-4">
-                            <span className={`px-2 py-1 rounded-full text-xs font-semibold uppercase
-                              ${t.status === 'calling' ? 'bg-green-100 text-green-800' :
-                                t.status === 'waiting' ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-gray-100 text-gray-800'}`}>
+                        <tr key={t.id} className={`transition-all ${t.status === 'calling' ? 'bg-blue-50/50' : 'hover:bg-slate-50'}`}>
+                          <td className="py-5 px-6 font-black text-blue-600 text-lg tracking-tighter">#{t.token_number}</td>
+                          <td className="py-5 px-6 font-bold text-slate-700">{t.visitor_name}</td>
+                          <td className="py-5 px-6 text-xs font-bold text-slate-500 uppercase tracking-tighter">
+                            <div className="flex flex-col">
+                              <span>{t.provider_name}</span>
+                              <span className="text-[10px] opacity-60 italic">{t.service_name}</span>
+                            </div>
+                          </td>
+                          <td className="py-5 px-6">
+                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest
+                                ${t.status === 'calling' ? 'bg-emerald-100 text-emerald-700' :
+                                t.status === 'waiting' ? 'bg-amber-100 text-amber-700' :
+                                  'bg-slate-100 text-slate-500'}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${t.status === 'calling' ? 'bg-emerald-500 animate-ping' : 'bg-current'}`} />
                               {t.status}
                             </span>
                           </td>
@@ -324,9 +537,114 @@ export default function UserDashboard() {
               )}
             </div>
           )}
-        </>
-      )}
+        </div>
+
+        {/* Right Column: History */}
+        <div className="lg:col-span-5 space-y-10">
+          <div className="premium-card p-10 sticky top-32 flex flex-col h-[800px] border-amber-100">
+            <div className="flex items-center justify-between mb-10 pb-6 border-b border-slate-100">
+              <h2 className="text-2xl font-bold flex items-center gap-3">
+                <span className="p-2 bg-slate-900 rounded-lg text-white">
+                  <Clock size={20} />
+                </span>
+                Session History
+              </h2>
+            </div>
+
+            <div className="flex-grow overflow-y-auto pr-4 custom-scrollbar">
+              {myTokens.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center px-6">
+                  <div className="w-20 h-20 bg-slate-100 rounded-full flex items-center justify-center mb-6 opacity-50">
+                    <Ticket size={40} className="text-slate-400" />
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-400">Empty Register</h3>
+                  <p className="text-slate-400 text-sm mt-2">Active session history will populate here upon booking.</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {myTokens.map((t) => (
+                    <div key={t.id} className="group relative p-6 bg-slate-50 rounded-2xl border border-slate-100 hover:bg-white hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-500">
+                      <div className="absolute top-4 right-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => { e.preventDefault(); handleDeleteToken(t.id); }}
+                          className="p-2 bg-white text-rose-500 hover:bg-rose-50 border border-slate-100 rounded-xl shadow-sm hover:shadow-md transition-all"
+                          title="Cancel Booking"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Entry Ref</span>
+                          <div className="text-3xl font-black text-slate-900 tracking-tighter">#{t.token_number}</div>
+                        </div>
+                        <div className="text-right flex flex-col items-end gap-2">
+                          <span className={`inline-flex px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest leading-none
+                              ${t.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
+                              t.status === 'calling' ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' : 'bg-white shadow-sm text-slate-500 border border-slate-100'}`}>
+                            {t.status}
+                          </span>
+                          <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            {t.provider_name}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-slate-900">
+                          <Stethoscope size={16} className="text-blue-500" />
+                          <span className="text-sm font-bold uppercase tracking-tight">{t.service_name}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-6 mt-6 pt-6 border-t border-slate-200/50">
+                        <div className="flex items-center gap-2 text-slate-500 shrink-0">
+                          <User size={16} />
+                          <span className="text-xs font-bold truncate max-w-[80px]">{t.visitor_name}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-slate-500">
+                          <Calendar size={16} />
+                          <span className="text-xs font-bold">{t.appointment_date || "Today"}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-slate-500">
+                          <Clock size={16} />
+                          <span className="text-xs font-bold">{t.appointment_time || "Now"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-8 p-6 bg-slate-900 rounded-2xl text-white">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">System Analytics</span>
+              </div>
+              <div className="flex justify-between items-end">
+                <div className="text-2xl font-black">{myTokens.length}</div>
+                <div className="text-[10px] text-slate-500 font-bold mb-1">Total session tokens</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="fixed bottom-6 right-6 z-50 space-y-4">
+        {toasts.map(t => (
+          <div key={t.id} className="bg-slate-900/90 text-white backdrop-blur-md p-4 rounded-xl shadow-2xl border border-slate-700/50 flex items-center justify-between gap-6 min-w-[300px] animate-slide-up">
+            <div className="flex items-center gap-3">
+              <BellRing size={18} className="text-blue-400 animate-pulse" />
+              <span className="text-sm font-bold leading-tight">{t.msg}</span>
+            </div>
+            <button onClick={() => removeToast(t.id)} className="text-slate-400 hover:text-white transition-colors">
+              <X size={16} />
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
-
