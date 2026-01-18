@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { fetchServices, fetchTokensByService, updateTokenStatus, fetchProviders, apiPost, apiDelete, fetchAllAssignments } from "../api";
+import { fetchServices, fetchTokensByService, updateTokenStatus, fetchProviders, apiPost, apiDelete, fetchAllAssignments, updateService, updateProvider } from "../api";
 import { LayoutDashboard, Building2, Stethoscope, Users, Plus, Trash2, Edit, CheckCircle, Clock, AlertCircle, Search, Zap, ArrowRight, ShieldCheck, UserPlus, Eye, EyeOff, MapPin, Unplug, ClipboardList } from "lucide-react";
 
 export default function AdminDashboard() {
@@ -241,17 +241,38 @@ function ProvidersTab({ setMessage }) {
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
 
+  const [editingId, setEditingId] = useState(null);
+
   const load = () => fetchProviders().then(setProviders);
   useEffect(() => { load(); }, []);
 
   const handleCreate = async () => {
     if (!name) return setMessage("Hospital identifier required");
     try {
-      await apiPost("/providers/", { name, location });
-      setMessage("Instance successfully deployed to global registry.");
-      setName(""); setLocation("");
+      if (editingId) {
+        await updateProvider(editingId, { name, location });
+        setMessage("Hospital details updated.");
+        setEditingId(null);
+        setName(""); setLocation("");
+      } else {
+        await apiPost("/providers/", { name, location });
+        setMessage("Instance successfully deployed to global registry.");
+        setName(""); setLocation("");
+      }
       load();
-    } catch { setMessage("Instance deployment failed"); }
+    } catch { setMessage("Operation failed"); }
+  };
+
+  const handleEdit = (p) => {
+    setName(p.name);
+    setLocation(p.location);
+    setEditingId(p.id);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setName("");
+    setLocation("");
   };
 
   const handleDelete = async (id) => {
@@ -259,6 +280,7 @@ function ProvidersTab({ setMessage }) {
     try {
       await apiDelete(`/providers/${id}/`);
       setMessage("Hospital removed from registry.");
+      if (editingId === id) handleCancelEdit();
       load();
     } catch { setMessage("Deletion failed"); }
   };
@@ -279,9 +301,16 @@ function ProvidersTab({ setMessage }) {
             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Institutional Location</label>
             <input className="premium-input" placeholder="e.g. Manhattan District" value={location} onChange={e => setLocation(e.target.value)} />
           </div>
-          <button onClick={handleCreate} className="btn-primary w-full shadow-blue-500/20 py-4 flex items-center justify-center gap-3">
-            <Plus size={20} /> Add Hospital
-          </button>
+          <div className="space-y-4">
+            <button onClick={handleCreate} className={`btn-primary w-full shadow-blue-500/20 py-4 flex items-center justify-center gap-3 ${editingId ? "bg-amber-500 hover:bg-amber-600" : ""}`}>
+              {editingId ? <Edit size={20} /> : <Plus size={20} />} {editingId ? "Update Hospital" : "Add Hospital"}
+            </button>
+            {editingId && (
+              <button onClick={handleCancelEdit} className="w-full py-2 text-slate-400 font-bold text-xs uppercase hover:text-slate-600">
+                Cancel Edit
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -300,9 +329,10 @@ function ProvidersTab({ setMessage }) {
                     {p.location || "GLOBAL_CLUSTER"}
                   </div>
                 </div>
-                <button onClick={() => handleDelete(p.id)} className="p-2 opacity-0 group-hover:opacity-100 transition-opacity hover:text-red-500">
-                  <Trash2 size={18} />
-                </button>
+                <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => handleEdit(p)} className="p-2 hover:text-blue-600"><Edit size={18} /></button>
+                  <button onClick={() => handleDelete(p.id)} className="p-2 hover:text-red-500"><Trash2 size={18} /></button>
+                </div>
               </div>
             ))}
           </div>
@@ -317,20 +347,48 @@ function ServicesTab({ setMessage }) {
   const [providers, setProviders] = useState([]);
   const [name, setName] = useState("");
   const [providerId, setProviderId] = useState("");
+  const [filterProviderId, setFilterProviderId] = useState("");
 
-  const load = () => fetchServices().then(setServices);
+  const [editingId, setEditingId] = useState(null);
+
+  const load = () => fetchServices(filterProviderId).then(setServices);
+
   useEffect(() => {
-    load();
     fetchProviders().then(setProviders);
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [filterProviderId]);
 
   const handleCreate = async () => {
     if (!name || !providerId) return setMessage("Identifier and Provider binding required");
     try {
-      await apiPost("/services/", { name, provider: providerId });
-      setMessage("Matrix specialty service established.");
-      setName(""); load();
-    } catch { setMessage("Service creation failed"); }
+      if (editingId) {
+        await updateService(editingId, { name, provider: providerId });
+        setMessage("Service stream updated.");
+        setEditingId(null);
+        setName("");
+        setProviderId("");
+      } else {
+        await apiPost("/services/", { name, provider: providerId });
+        setMessage("Matrix specialty service established.");
+        setName("");
+      }
+      load();
+    } catch { setMessage("Operation failed"); }
+  };
+
+  const handleEdit = (s) => {
+    setName(s.name);
+    setProviderId(s.provider);
+    setEditingId(s.id);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingId(null);
+    setName("");
+    setProviderId("");
   };
 
   const handleDelete = async (id) => {
@@ -338,6 +396,7 @@ function ServicesTab({ setMessage }) {
     try {
       await apiDelete(`/services/${id}/`);
       setMessage("Service stream removed.");
+      if (editingId === id) handleCancelEdit();
       load();
     } catch { setMessage("Deletion failed"); }
   };
@@ -361,9 +420,17 @@ function ServicesTab({ setMessage }) {
             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Specialty Name</label>
             <input className="premium-input" placeholder="e.g. Neuro-Surgery" value={name} onChange={e => setName(e.target.value)} />
           </div>
-          <button onClick={handleCreate} className="btn-primary w-full shadow-emerald-500/10 bg-emerald-600 hover:bg-emerald-700 py-4 flex items-center justify-center gap-3">
-            <Plus size={20} /> Establish Specialty
-          </button>
+          <div className="space-y-4">
+            <button onClick={handleCreate} className={`btn-primary w-full shadow-emerald-500/10 py-4 flex items-center justify-center gap-3 ${editingId ? "bg-amber-500 hover:bg-amber-600" : "bg-emerald-600 hover:bg-emerald-700"}`}>
+              {editingId ? <Edit size={20} /> : <Plus size={20} />}
+              {editingId ? "Update Specialty" : "Establish Specialty"}
+            </button>
+            {editingId && (
+              <button onClick={handleCancelEdit} className="w-full py-2 text-slate-400 font-bold text-xs uppercase hover:text-slate-600">
+                Cancel Edit
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -372,6 +439,18 @@ function ServicesTab({ setMessage }) {
           <h3 className="text-xl font-black text-slate-900 tracking-tight uppercase mb-8 border-b border-slate-50 pb-4 flex items-center gap-3">
             <Stethoscope size={20} className="text-blue-600" /> Service Matrix
           </h3>
+
+          <div className="mb-6">
+            <select
+              className="premium-input !py-3 text-sm font-bold tracking-tight appearance-none cursor-pointer w-full bg-white"
+              value={filterProviderId}
+              onChange={(e) => setFilterProviderId(e.target.value)}
+            >
+              <option value="">All Institutional Hosts</option>
+              {providers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 overflow-y-auto max-h-[500px] pr-2 custom-scrollbar">
             {services.map(s => (
               <div key={s.id} className="p-6 bg-white border border-slate-100 rounded-2xl flex justify-between items-center group hover:shadow-xl hover:shadow-blue-500/5 transition-all">
@@ -382,7 +461,7 @@ function ServicesTab({ setMessage }) {
                   </div>
                 </div>
                 <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button className="p-2 hover:text-blue-600"><Edit size={18} /></button>
+                  <button onClick={() => handleEdit(s)} className="p-2 hover:text-blue-600"><Edit size={18} /></button>
                   <button onClick={() => handleDelete(s.id)} className="p-2 hover:text-red-500"><Trash2 size={18} /></button>
                 </div>
               </div>

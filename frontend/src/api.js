@@ -65,9 +65,23 @@ export async function fetchProviders() {
   return request("/providers/");
 }
 
+export async function updateProvider(id, data) {
+  return request(`/providers/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
 export async function fetchServices(providerId = null) {
   const query = providerId ? `?provider=${providerId}` : "";
   return request(`/services/${query}`);
+}
+
+export async function updateService(id, data) {
+  return request(`/services/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export async function fetchTokensByService(serviceId) {
