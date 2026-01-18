@@ -89,6 +89,7 @@ export default function UserDashboard() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [showAllNotifications, setShowAllNotifications] = useState(false);
+  const [activeAlert, setActiveAlert] = useState(null); // Critical alert state
 
   // Toast System
   const [toasts, setToasts] = useState([]);
@@ -126,7 +127,15 @@ export default function UserDashboard() {
           if (!seenIds.current.has(n.id)) {
             // Only toast if it's NOT the first load to avoid blasting history
             if (!isFirstLoad.current) {
-              addToast(n.message);
+              // Determine if critical
+              const msg = n.message.toLowerCase();
+              const isCritical = msg.includes("called") || msg.includes("cancelled") || msg.includes("skipped");
+
+              if (isCritical) {
+                setActiveAlert(n);
+              } else {
+                addToast(n.message);
+              }
 
               // Browser Notification
               if ("Notification" in window && Notification.permission === "granted") {
@@ -243,6 +252,45 @@ export default function UserDashboard() {
 
   return (
     <div className="max-w-7xl mx-auto px-6 py-12 space-y-12 animate-fade-in">
+      {/* Critical Alert Modal (Mobile/Desktop) */}
+      {activeAlert && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-fade-in">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden animate-scale-in ring-4 ring-white/20">
+            <div className={`h-3 w-full ${activeAlert.message.toLowerCase().includes("cancelled") ? "bg-rose-500" :
+              activeAlert.message.toLowerCase().includes("skipped") ? "bg-amber-500" :
+                "bg-blue-600 animate-pulse"
+              }`}></div>
+            <div className="p-8 text-center space-y-6">
+              <div className={`mx-auto w-20 h-20 rounded-full flex items-center justify-center shadow-xl mb-4 ${activeAlert.message.toLowerCase().includes("cancelled") ? "bg-rose-100 text-rose-600" :
+                activeAlert.message.toLowerCase().includes("skipped") ? "bg-amber-100 text-amber-600" :
+                  "bg-blue-600 text-white"
+                }`}>
+                {activeAlert.message.toLowerCase().includes("cancelled") ? <X size={40} /> :
+                  activeAlert.message.toLowerCase().includes("skipped") ? <Clock size={40} /> :
+                    <BellRing size={40} className="animate-bounce" />}
+              </div>
+              <div>
+                <h3 className="text-2xl font-black text-slate-900 tracking-tighter mb-2">
+                  {activeAlert.message.toLowerCase().includes("cancelled") ? "Appointment Cancelled" :
+                    activeAlert.message.toLowerCase().includes("skipped") ? "Status: Skipped" :
+                      "Attention Required"}
+                </h3>
+                <p className="text-slate-600 font-bold leading-relaxed">
+                  {activeAlert.message}
+                </p>
+              </div>
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-100">
+              <button
+                onClick={() => setActiveAlert(null)}
+                className="w-full py-4 bg-slate-900 text-white font-bold rounded-2xl shadow-lg active:scale-95 transition-all text-lg"
+              >
+                Acknowledge
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Hero Header */}
       <div className="relative overflow-hidden bg-white premium-card p-10 flex flex-col md:flex-row items-center justify-between gap-8 border-none ring-1 ring-slate-200/50">
         <div className="relative z-10 space-y-2">
