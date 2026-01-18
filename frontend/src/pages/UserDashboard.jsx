@@ -110,6 +110,11 @@ export default function UserDashboard() {
   const todayStr = today.toISOString().split('T')[0];
 
   useEffect(() => {
+    // Request Notification Permission on mount
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+
     const loadNotifs = async () => {
       try {
         const data = await fetchNotifications();
@@ -122,6 +127,11 @@ export default function UserDashboard() {
             // Only toast if it's NOT the first load to avoid blasting history
             if (!isFirstLoad.current) {
               addToast(n.message);
+
+              // Browser Notification
+              if ("Notification" in window && Notification.permission === "granted") {
+                new Notification("Queue Manager Alert", { body: n.message, icon: "/vite.svg" });
+              }
             }
             seenIds.current.add(n.id);
           }
